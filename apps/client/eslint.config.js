@@ -20,9 +20,6 @@ export default defineConfig(
         tsconfigRootDir: import.meta.dirname,
       },
     },
-    rules: {
-      "quotes": ["error", "double"],
-    },
   },
   {
     ignores: ["dist/**", "node_modules/**"],

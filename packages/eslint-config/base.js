@@ -27,6 +27,11 @@ export const baseConfig = [
     },
   },
   {
+    rules: {
+      "quotes": ["error", "double"],
+    },
+  },
+  {
     ignores: ["dist/**"],
   },
 ];
