@@ -1,15 +1,16 @@
-import { baseConfig } from "@repo/eslint-config/base";
+import { defineConfig } from "eslint/config";
 import tseslint from "typescript-eslint";
 import reactX from "eslint-plugin-react-x";
 import reactDom from "eslint-plugin-react-dom";
+import { baseConfig } from "@repo/eslint-config/base";
 
 /** @type {import("eslint").Linter.Config} */
-export default tseslint.config([
+export default defineConfig(
   ...baseConfig,
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
-      ...tseslint.configs.recommendedTypeChecked,
+      tseslint.configs.recommendedTypeChecked,
       reactX.configs["recommended-typescript"],
       reactDom.configs.recommended,
     ],
@@ -19,8 +20,11 @@ export default tseslint.config([
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    rules: {
+      "quotes": ["error", "double"],
+    },
   },
   {
     ignores: ["dist/**", "node_modules/**"],
-  },
-]);
+  }
+);
