@@ -19,6 +19,12 @@
     "start": {
       "dependsOn": ["build"],
       "cache": false
+    },
+    "test": {
+      "dependsOn": ["transit"]
+    },
+    "transit": {
+      "dependsOn": ["^transit"]
     }
   }
 }
