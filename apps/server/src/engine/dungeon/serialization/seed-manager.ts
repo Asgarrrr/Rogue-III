@@ -1,6 +1,13 @@
 import { DungeonSeed } from "../core/types/dungeon.types";
 import { SeededRandom } from "../core/random/seeded-random";
 
+import { z } from "zod";
+import {
+	DungeonSeedSchema,
+	SeedPartsSchema,
+	EncodedSeedSchema,
+} from "../schema/seed";
+
 export class SeedManager {
 	private static readonly MAGIC_NUMBERS = {
 		LAYOUT: 0x9e3779b9,
@@ -8,6 +15,9 @@ export class SeedManager {
 		CONNECTIONS: 0xc2b2ae35,
 		DETAILS: 0x27d4eb2f,
 	};
+
+	private static readonly DEFAULT_VERSION = "1.0.0";
+	private static readonly SEED_PARTS_COUNT = 6;
 
 	/**
 	 * Generate a set of seeds from a primary seed
@@ -20,7 +30,7 @@ export class SeedManager {
 
 		return {
 			primary: primarySeed,
-			layout: primarySeed ^ this.MAGIC_NUMBERS.LAYOUT,
+			layout: Math.abs(primarySeed ^ this.MAGIC_NUMBERS.LAYOUT),
 			rooms: rng.range(1000000, 9999999),
 			connections: rng.range(1000000, 9999999),
 			details: rng.range(1000000, 9999999),
@@ -57,50 +67,97 @@ export class SeedManager {
 	}
 
 	/**
+	 * Convert standard base64 to base64url format
+	 */
+	private static toBase64Url(base64: string): string {
+		return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+	}
+
+	/**
+	 * Convert base64url to standard base64 format
+	 */
+	private static fromBase64Url(base64Url: string): string {
+		let base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+		while (base64.length % 4 !== 0) base64 += "=";
+		return base64;
+	}
+
+	/**
+	 * Create a DungeonSeed object from validated parts
+	 */
+	private static createSeedFromParts(parts: number[]): DungeonSeed {
+		return {
+			primary: parts[0],
+			layout: parts[1],
+			rooms: parts[2],
+			connections: parts[3],
+			details: parts[4],
+			version: this.DEFAULT_VERSION,
+			timestamp: parts[5],
+		};
+	}
+
+	/**
 	 * Encode a seed into a short shareable string using base64url
 	 */
-	static encodeSeed(seed: DungeonSeed): string {
-		const data = [
-			seed.primary,
-			seed.layout,
-			seed.rooms,
-			seed.connections,
-			seed.details,
-		];
+	static encodeSeed(seed: DungeonSeed): string | z.ZodError {
+		const validation = DungeonSeedSchema.safeParse(seed);
+		if (!validation.success) return validation.error;
 
-		// Use | separator to avoid conflicts with negative signs
-		return btoa(data.join("|"))
-			.replace(/\+/g, "-")
-			.replace(/\//g, "_")
-			.replace(/=/g, "");
+		try {
+			const data = [
+				seed.primary,
+				seed.layout,
+				seed.rooms,
+				seed.connections,
+				seed.details,
+				seed.timestamp,
+			];
+			return this.toBase64Url(btoa(data.join("|")));
+		} catch (error) {
+			return new z.ZodError([
+				{
+					message: `Encoding failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+					code: "custom",
+					path: ["encoding"],
+				},
+			]);
+		}
 	}
 
 	/**
 	 * Decode a string back to a seed (base64url compatible)
 	 */
-	static decodeSeed(encoded: string): DungeonSeed | null {
+	static decodeSeed(encoded: string): DungeonSeed | z.ZodError {
+		const inputValidation = EncodedSeedSchema.safeParse(encoded);
+
+		if (!inputValidation.success) {
+			return inputValidation.error;
+		}
+
 		try {
-			// Convert base64url back to standard base64
-			let base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+			const decodedString = atob(this.fromBase64Url(encoded));
+			const parts = decodedString.split("|").map(Number);
 
-			while (base64.length % 4 !== 0) base64 += "=";
+			const partsValidation = SeedPartsSchema.safeParse(parts);
 
-			const decoded = atob(base64);
-			const parts = decoded.split("|").map(Number);
+			if (!partsValidation.success) {
+				return partsValidation.error;
+			}
 
-			if (parts.length !== 5 || parts.some(isNaN)) return null;
-
-			return {
-				primary: parts[0],
-				layout: parts[1],
-				rooms: parts[2],
-				connections: parts[3],
-				details: parts[4],
-				version: "1.0.0",
-				timestamp: Date.now(),
-			};
-		} catch {
-			return null;
+			const seedValidation = DungeonSeedSchema.safeParse(
+				this.createSeedFromParts(parts)
+			);
+			if (!seedValidation.success) return seedValidation.error;
+			return seedValidation.data;
+		} catch (error) {
+			return new z.ZodError([
+				{
+					message: `Base64 decoding failed: ${error instanceof Error ? error.message : "Unknown error"}`,
+					code: "custom",
+					path: ["decoding", "base64"],
+				},
+			]);
 		}
 	}
 }

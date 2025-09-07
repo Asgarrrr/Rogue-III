@@ -29,6 +29,7 @@ export const baseConfig = [
   {
     rules: {
       "quotes": ["error", "double"],
+      "curly": ["error", "all"],
     },
   },
   {

@@ -2,6 +2,7 @@ import { describe, test, expect, beforeEach } from "bun:test";
 import { DungeonManager } from "../src/engine/dungeon";
 import { CellularGenerator } from "../src/engine/dungeon/generators/algorithms/cellular-generator";
 import { SeededRandom } from "../src/engine/dungeon/core/random/seeded-random";
+import { ZodError } from "zod";
 
 // Test constants
 const TEST_SEED = 123456789;
@@ -285,6 +286,7 @@ describe("Dungeon Generation Determinism Suite", () => {
 			// Verify that regeneration worked
 			expect(regeneratedDungeon).toBeDefined();
 			expect(regeneratedDungeon).not.toBeNull();
+			expect(regeneratedDungeon).not.toBeInstanceOf(ZodError);
 
 			// Verify that all elements are identical
 			expect(regeneratedDungeon!.checksum).toBe(originalDungeon.checksum);
@@ -343,7 +345,8 @@ describe("Dungeon Generation Determinism Suite", () => {
 					code as any,
 					baseConfig
 				);
-				expect(result).toBeNull();
+				// Should return null or ZodError for invalid codes
+				expect(result === null || result instanceof ZodError).toBe(true);
 			});
 		});
 
@@ -363,6 +366,7 @@ describe("Dungeon Generation Determinism Suite", () => {
 
 				// Verify consistency
 				expect(regenerated).toBeDefined();
+				expect(regenerated).not.toBeInstanceOf(ZodError);
 				expect(regenerated!.checksum).toBe(original.checksum);
 				expect(regenerated!.rooms.length).toBe(original.rooms.length);
 				expect(regenerated!.connections.length).toBe(
