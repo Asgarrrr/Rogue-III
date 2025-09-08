@@ -11,7 +11,7 @@ const app = new Elysia()
     uptime: process.uptime(),
     timestamp: new Date().toISOString()
   }))
-  .get("/api/ping", () => "pong")
+  .get('/api/ping', () => "pong")
   .listen(3001);
 
 console.log(
