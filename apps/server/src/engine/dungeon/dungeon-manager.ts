@@ -1,10 +1,11 @@
 import { DungeonConfig, DungeonSeed } from "./core/types";
 import { SeedManager } from "./serialization";
 import { DungeonGenerator } from "./generators/base/dungeon-generator";
-import { CellularGenerator } from "./generators/algorithms/cellular-generator";
+import { CellularGenerator } from "./generators/algorithms/cellular";
 import { Dungeon } from "./entities";
 import { DungeonConfigSchema } from "./schema/dungeon";
 import { z } from "zod";
+import { BSPGenerator } from "./generators/algorithms/bsp-generator";
 
 export class DungeonManager {
 	static async generateFromSeedAsync(
@@ -52,7 +53,7 @@ export class DungeonManager {
 	): Dungeon | null {
 		const seeds = SeedManager.decodeSeed(dungeonCode);
 		if (seeds instanceof z.ZodError) {
-			return null; // Return null instead of throwing for invalid codes
+			return null;
 		}
 
 		return this.createGenerator(config, seeds).generate();
@@ -88,8 +89,7 @@ export class DungeonManager {
 	): DungeonGenerator {
 		switch (config.algorithm) {
 			case "BSP":
-				// TODO: Implement BSP (Binary Space Partitioning) generator
-				throw new Error("BSP generator not implemented yet");
+				return new BSPGenerator(config, seeds);
 			case "cellular":
 				return new CellularGenerator(config, seeds);
 			default:
