@@ -15,14 +15,14 @@ export interface RoomPlacementConfig {
 }
 
 /**
- * Default room placement configuration with optimized settings for higher room count
+ * Default room placement configuration with balanced settings for quality and performance
  */
 export const DEFAULT_ROOM_PLACEMENT_CONFIG: RoomPlacementConfig = {
 	minRoomSize: 4,
 	maxRoomSize: 12,
 	roomCount: 8,
-	minRoomSpacing: 1, // Reduced from 2 to allow more rooms to fit
-	maxPlacementAttempts: 30, // Reduced from 50 for better performance
+	minRoomSpacing: 2, // Restored to 2 for better room separation
+	maxPlacementAttempts: 40, // Balanced between performance and success rate
 	roomTypes: ["normal", "treasure", "monster", "special"] as const,
 };
 
@@ -123,9 +123,9 @@ export class RoomPlacer {
 		const cavernArea = cavern.size;
 		const avgRoomArea =
 			((this.config.minRoomSize + this.config.maxRoomSize) / 2) ** 2;
-		const estimatedCapacity = Math.floor(cavernArea / (avgRoomArea * 2)); // Further reduced factor for more rooms
+		const estimatedCapacity = Math.floor(cavernArea / (avgRoomArea * 3)); // Restored conservative factor of 3 for proper spacing
 
-		const roomsToPlace = Math.min(remainingRooms, estimatedCapacity, remainingRooms); // Allow up to all remaining rooms per cavern
+		const roomsToPlace = Math.min(remainingRooms, estimatedCapacity, 3); // Restored max 3 rooms per cavern for better placement quality
 
 		for (let i = 0; i < roomsToPlace; i++) {
 			const room = this.placeSingleRoomInCavern(
@@ -297,7 +297,7 @@ export class RoomPlacer {
 		}
 
 		const coverage = floorCells / totalCells;
-		return coverage >= 0.65; // Further reduced from 70% to 65% for maximum room placement flexibility
+		return coverage >= 0.75; // Restored to a more conservative 75% coverage requirement for better room quality
 	}
 
 	/**

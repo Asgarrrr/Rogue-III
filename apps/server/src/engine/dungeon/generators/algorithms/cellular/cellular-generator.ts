@@ -132,6 +132,12 @@ export class CellularGenerator extends DungeonGenerator {
 			}ms)`
 		);
 
+		// Phase 4.5: Carve connection paths into the grid
+		this.carveConnectionPaths(connections, grid);
+		console.log(
+			`✅ Carved connection paths (${performance.now() - startTime}ms)`
+		);
+
 		// Phase 5: Generate final dungeon
 		const checksum = this.calculateChecksum(rooms, connections);
 		const dungeon = new DungeonImpl({
@@ -196,7 +202,15 @@ export class CellularGenerator extends DungeonGenerator {
 				performance.now() - startTime
 			}ms)`
 		);
-		updateProgress(15);
+		updateProgress(10);
+		await this.yield();
+
+		// Phase 4.5: Carve connection paths into the grid
+		this.carveConnectionPaths(connections, grid);
+		console.log(
+			`✅ Carved connection paths (${performance.now() - startTime}ms)`
+		);
+		updateProgress(5);
 		await this.yield();
 
 		// Phase 5: Generate final dungeon (5%)
@@ -280,13 +294,19 @@ export class CellularGenerator extends DungeonGenerator {
 	private placeRooms(caverns: any[], grid: Grid) {
 		const rooms = this.roomPlacer.placeRooms(caverns, grid);
 
+		// Carve rooms into the grid
+		this.carveRoomsIntoGrid(rooms, grid);
+
 		// Optional: Optimize placement using simulated annealing
 		if (
 			rooms.length > 0 &&
 			rooms.length < this.cellularConfig.rooms.roomCount
 		) {
 			console.log(`🔧 Optimizing room placement...`);
-			return this.roomPlacer.optimizeRoomPlacement(rooms, caverns, grid);
+			const optimizedRooms = this.roomPlacer.optimizeRoomPlacement(rooms, caverns, grid);
+			// Re-carve optimized rooms
+			this.carveRoomsIntoGrid(optimizedRooms, grid);
+			return optimizedRooms;
 		}
 
 		return rooms;
@@ -297,6 +317,41 @@ export class CellularGenerator extends DungeonGenerator {
 	 */
 	private createConnections(rooms: RoomImpl[], grid: Grid) {
 		return this.pathFinder.createConnections(rooms, grid);
+	}
+
+	/**
+	 * Carve rooms into the grid to ensure they are walkable
+	 */
+	private carveRoomsIntoGrid(rooms: RoomImpl[], grid: Grid): void {
+		for (const room of rooms) {
+			// Carve the entire room area as floor
+			for (let y = room.y; y < room.y + room.height; y++) {
+				for (let x = room.x; x < room.x + room.width; x++) {
+					if (grid.isInBounds(x, y)) {
+						grid.setCell(x, y, CellType.FLOOR);
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Carve connection paths into the grid to create walkable corridors
+	 */
+	private carveConnectionPaths(connections: ConnectionImpl[], grid: Grid): void {
+		for (const connection of connections) {
+			// Carve each point in the connection path
+			for (const point of connection.path) {
+				const x = Math.floor(point.x);
+				const y = Math.floor(point.y);
+				
+				// Ensure the path point is within bounds
+				if (grid.isInBounds(x, y)) {
+					// Set corridor cell to floor
+					grid.setCell(x, y, CellType.FLOOR);
+				}
+			}
+		}
 	}
 
 	/**
