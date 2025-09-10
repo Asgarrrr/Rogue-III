@@ -132,10 +132,12 @@ export class CellularGenerator extends DungeonGenerator {
 			}ms)`
 		);
 
-		// Phase 4.5: Carve connection paths into the grid
-		this.carveConnectionPaths(connections, grid);
+		// Phase 4.5: Carve rooms and paths into the grid for navigation
+		this.integrateRoomsAndPathsIntoGrid(rooms, connections, grid);
 		console.log(
-			`✅ Carved connection paths (${performance.now() - startTime}ms)`
+			`✅ Integrated rooms and paths into grid (${
+				performance.now() - startTime
+			}ms)`
 		);
 
 		// Phase 5: Generate final dungeon
@@ -172,11 +174,13 @@ export class CellularGenerator extends DungeonGenerator {
 			onProgress?.(Math.min(currentProgress, 100));
 		};
 
+		// Start with initial progress report
+		onProgress?.(0);
+
 		// Phase 1: Generate and evolve cellular grid (30%)
-		updateProgress(5);
 		const grid = this.generateCellularGrid();
 		console.log(`✅ Grid generated (${performance.now() - startTime}ms)`);
-		updateProgress(25);
+		updateProgress(30);
 		await this.yield();
 
 		// Phase 2: Analyze cavern structure (25%)
@@ -205,10 +209,12 @@ export class CellularGenerator extends DungeonGenerator {
 		updateProgress(10);
 		await this.yield();
 
-		// Phase 4.5: Carve connection paths into the grid
-		this.carveConnectionPaths(connections, grid);
+		// Phase 4.5: Carve rooms and paths into the grid for navigation (5%)
+		this.integrateRoomsAndPathsIntoGrid(rooms, connections, grid);
 		console.log(
-			`✅ Carved connection paths (${performance.now() - startTime}ms)`
+			`✅ Integrated rooms and paths into grid (${
+				performance.now() - startTime
+			}ms)`
 		);
 		updateProgress(5);
 		await this.yield();
@@ -294,19 +300,13 @@ export class CellularGenerator extends DungeonGenerator {
 	private placeRooms(caverns: any[], grid: Grid) {
 		const rooms = this.roomPlacer.placeRooms(caverns, grid);
 
-		// Carve rooms into the grid
-		this.carveRoomsIntoGrid(rooms, grid);
-
 		// Optional: Optimize placement using simulated annealing
 		if (
 			rooms.length > 0 &&
 			rooms.length < this.cellularConfig.rooms.roomCount
 		) {
 			console.log(`🔧 Optimizing room placement...`);
-			const optimizedRooms = this.roomPlacer.optimizeRoomPlacement(rooms, caverns, grid);
-			// Re-carve optimized rooms
-			this.carveRoomsIntoGrid(optimizedRooms, grid);
-			return optimizedRooms;
+			return this.roomPlacer.optimizeRoomPlacement(rooms, caverns, grid);
 		}
 
 		return rooms;
@@ -320,11 +320,15 @@ export class CellularGenerator extends DungeonGenerator {
 	}
 
 	/**
-	 * Carve rooms into the grid to ensure they are walkable
+	 * Integrate rooms and connection paths into the grid to create walkable areas
 	 */
-	private carveRoomsIntoGrid(rooms: RoomImpl[], grid: Grid): void {
+	private integrateRoomsAndPathsIntoGrid(
+		rooms: RoomImpl[],
+		connections: ConnectionImpl[],
+		grid: Grid
+	): void {
+		// First, carve all rooms into the grid
 		for (const room of rooms) {
-			// Carve the entire room area as floor
 			for (let y = room.y; y < room.y + room.height; y++) {
 				for (let x = room.x; x < room.x + room.width; x++) {
 					if (grid.isInBounds(x, y)) {
@@ -333,21 +337,14 @@ export class CellularGenerator extends DungeonGenerator {
 				}
 			}
 		}
-	}
 
-	/**
-	 * Carve connection paths into the grid to create walkable corridors
-	 */
-	private carveConnectionPaths(connections: ConnectionImpl[], grid: Grid): void {
+		// Then, carve all connection paths into the grid  
 		for (const connection of connections) {
-			// Carve each point in the connection path
 			for (const point of connection.path) {
 				const x = Math.floor(point.x);
 				const y = Math.floor(point.y);
 				
-				// Ensure the path point is within bounds
 				if (grid.isInBounds(x, y)) {
-					// Set corridor cell to floor
 					grid.setCell(x, y, CellType.FLOOR);
 				}
 			}

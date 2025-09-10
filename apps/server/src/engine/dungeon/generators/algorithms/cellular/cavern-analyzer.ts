@@ -226,10 +226,13 @@ export class CavernAnalyzer {
 			// Must be large enough for minimum room size plus padding
 			const minRequiredSize = (minRoomSize + 2) * (minRoomSize + 2);
 
+			// For very small caverns, be more lenient with spacing requirements
+			const minSpacing = Math.min(4, Math.max(2, Math.floor(Math.min(width, height) * 0.2)));
+
 			return (
 				cavern.size >= minRequiredSize &&
-				width >= minRoomSize + 4 &&
-				height >= minRoomSize + 4
+				width >= minRoomSize + minSpacing &&
+				height >= minRoomSize + minSpacing
 			);
 		});
 	}
