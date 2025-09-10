@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { DungeonManager } from "../src/engine/dungeon";
-import { CellularGenerator } from "../src/engine/dungeon/generators/algorithms/cellular-generator";
+import { CellularGenerator } from "../src/engine/dungeon/generators/algorithms/cellular/cellular-generator";
 import { SeededRandom } from "../src/engine/dungeon/core/random/seeded-random";
 import { ZodError } from "zod";
 

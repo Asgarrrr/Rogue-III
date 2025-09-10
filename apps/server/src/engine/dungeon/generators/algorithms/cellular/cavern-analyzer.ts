@@ -19,7 +19,7 @@ export interface CavernAnalysisConfig {
  * Default configuration for cavern analysis
  */
 export const DEFAULT_CAVERN_CONFIG: CavernAnalysisConfig = {
-	minCavernSize: 25,
+	minCavernSize: 20, // Reduced from 25 to find more smaller caverns
 	maxCavernSize: 10000,
 	connectivityMode: "4",
 };
