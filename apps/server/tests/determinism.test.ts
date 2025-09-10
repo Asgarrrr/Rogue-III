@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { DungeonManager } from "../src/engine/dungeon";
-import { CellularGenerator } from "../src/engine/dungeon/generators/algorithms/cellular-generator";
+import { CellularGenerator } from "../src/engine/dungeon/generators/algorithms/cellular/cellular-generator";
 import { SeededRandom } from "../src/engine/dungeon/core/random/seeded-random";
 import { ZodError } from "zod";
 
@@ -190,7 +190,7 @@ describe("Dungeon Generation Determinism Suite", () => {
 		test("should handle edge case configurations", () => {
 			const edgeConfigs = [
 				{ ...baseConfig, width: 40, height: 30, roomCount: 3 },
-				{ ...baseConfig, width: 20, height: 20, roomCount: 1 },
+				{ ...baseConfig, width: 20, height: 20, roomCount: 1, roomSizeRange: [4, 6] as [number, number] }, // Smaller rooms for tiny grid
 				{ ...baseConfig, roomSizeRange: [5, 8] as [number, number] },
 			];
 

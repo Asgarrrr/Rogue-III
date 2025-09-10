@@ -132,6 +132,14 @@ export class CellularGenerator extends DungeonGenerator {
 			}ms)`
 		);
 
+		// Phase 4.5: Carve rooms and paths into the grid for navigation
+		this.integrateRoomsAndPathsIntoGrid(rooms, connections, grid);
+		console.log(
+			`✅ Integrated rooms and paths into grid (${
+				performance.now() - startTime
+			}ms)`
+		);
+
 		// Phase 5: Generate final dungeon
 		const checksum = this.calculateChecksum(rooms, connections);
 		const dungeon = new DungeonImpl({
@@ -166,11 +174,13 @@ export class CellularGenerator extends DungeonGenerator {
 			onProgress?.(Math.min(currentProgress, 100));
 		};
 
+		// Start with initial progress report
+		onProgress?.(0);
+
 		// Phase 1: Generate and evolve cellular grid (30%)
-		updateProgress(5);
 		const grid = this.generateCellularGrid();
 		console.log(`✅ Grid generated (${performance.now() - startTime}ms)`);
-		updateProgress(25);
+		updateProgress(30);
 		await this.yield();
 
 		// Phase 2: Analyze cavern structure (25%)
@@ -196,7 +206,17 @@ export class CellularGenerator extends DungeonGenerator {
 				performance.now() - startTime
 			}ms)`
 		);
-		updateProgress(15);
+		updateProgress(10);
+		await this.yield();
+
+		// Phase 4.5: Carve rooms and paths into the grid for navigation (5%)
+		this.integrateRoomsAndPathsIntoGrid(rooms, connections, grid);
+		console.log(
+			`✅ Integrated rooms and paths into grid (${
+				performance.now() - startTime
+			}ms)`
+		);
+		updateProgress(5);
 		await this.yield();
 
 		// Phase 5: Generate final dungeon (5%)
@@ -297,6 +317,38 @@ export class CellularGenerator extends DungeonGenerator {
 	 */
 	private createConnections(rooms: RoomImpl[], grid: Grid) {
 		return this.pathFinder.createConnections(rooms, grid);
+	}
+
+	/**
+	 * Integrate rooms and connection paths into the grid to create walkable areas
+	 */
+	private integrateRoomsAndPathsIntoGrid(
+		rooms: RoomImpl[],
+		connections: ConnectionImpl[],
+		grid: Grid
+	): void {
+		// First, carve all rooms into the grid
+		for (const room of rooms) {
+			for (let y = room.y; y < room.y + room.height; y++) {
+				for (let x = room.x; x < room.x + room.width; x++) {
+					if (grid.isInBounds(x, y)) {
+						grid.setCell(x, y, CellType.FLOOR);
+					}
+				}
+			}
+		}
+
+		// Then, carve all connection paths into the grid  
+		for (const connection of connections) {
+			for (const point of connection.path) {
+				const x = Math.floor(point.x);
+				const y = Math.floor(point.y);
+				
+				if (grid.isInBounds(x, y)) {
+					grid.setCell(x, y, CellType.FLOOR);
+				}
+			}
+		}
 	}
 
 	/**

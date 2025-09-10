@@ -12,11 +12,11 @@ export interface AutomatonConfig {
 }
 
 /**
- * Default configuration optimized for cave-like structures
+ * Default configuration optimized for cave-like structures with multiple separate caverns
  */
 export const DEFAULT_AUTOMATON_CONFIG: AutomatonConfig = {
-	wallProbability: 0.45,
-	iterations: 3,
+	wallProbability: 0.48, // Increased to create more separation between caverns
+	iterations: 3, // Back to 3 for more irregular shapes
 	survivalMin: 4,
 	birthMin: 5,
 };
