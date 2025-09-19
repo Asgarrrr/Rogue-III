@@ -18,10 +18,10 @@ export * from "./object-pool";
 
 // Re-export commonly used types for convenience
 export type {
-	Point,
-	Bounds,
-	GridDimensions,
-	Region,
-	FloodFillConfig,
+  Point,
+  Bounds,
+  GridDimensions,
+  Region,
+  FloodFillConfig,
 } from "./types";
 export { CellType, DIRECTIONS_4, DIRECTIONS_8 } from "./types";

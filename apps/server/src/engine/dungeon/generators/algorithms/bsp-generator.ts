@@ -4,9 +4,20 @@
  * Use only for initial testing.
  */
 
+import { CellType, Grid } from "../../core/grid";
+import type { DungeonConfig, DungeonSeed } from "../../core/types";
+import {
+  type ConnectionImpl,
+  DungeonImpl,
+  type RoomImpl,
+} from "../../entities";
+import {
+  type GenContext,
+  type Pipeline,
+  PipelineRunner,
+  type PipelineStep,
+} from "../../generators/pipeline";
 import { DungeonGenerator } from "../base/dungeon-generator";
-import { DungeonConfig, DungeonSeed } from "../../core/types";
-import { DungeonImpl } from "../../entities";
 
 /**
  * BSP (Binary Space Partitioning) Dungeon Generator
@@ -21,204 +32,304 @@ import { DungeonImpl } from "../../entities";
  * 4. Connect rooms with corridors
  */
 export class BSPGenerator extends DungeonGenerator {
-	private readonly MIN_ROOM_SIZE = 8;
-	private readonly MAX_SPLIT_RATIO = 0.6;
-	private readonly MIN_SPLIT_RATIO = 0.4;
+  private readonly MIN_ROOM_SIZE = 8;
+  private readonly MAX_SPLIT_RATIO = 0.6;
+  private readonly MIN_SPLIT_RATIO = 0.4;
 
-	constructor(config: DungeonConfig, seeds: DungeonSeed) {
-		super(config, seeds);
-	}
+  constructor(config: DungeonConfig, seeds: DungeonSeed) {
+    super(config, seeds);
+  }
 
-	generate(): DungeonImpl {
-		console.log(
-			`🌳 Generating BSP dungeon with seeds: L=${this.seeds.layout}, R=${this.seeds.rooms}`
-		);
+  generate(): DungeonImpl {
+    console.log(
+      `🌳 Generating BSP dungeon with seeds: L=${this.seeds.layout}, R=${this.seeds.rooms}`,
+    );
 
-		// Create root space
-		const rootSpace = {
-			x: 0,
-			y: 0,
-			width: this.config.width,
-			height: this.config.height,
-		};
+    const { grid, rooms, connections } = this.runPipeline();
 
-		// Generate BSP tree
-		const spaces = this.generateSpaces(rootSpace);
+    const checksum = this.calculateChecksum(rooms, connections);
+    return new DungeonImpl({
+      rooms,
+      connections,
+      config: this.config,
+      seeds: this.seeds,
+      checksum,
+      grid: grid.toBooleanGrid(),
+    });
+  }
 
-		// Create rooms from spaces
-		const rooms = this.createRoomsFromSpaces(spaces);
+  private runPipeline(): {
+    grid: Grid;
+    rooms: RoomImpl[];
+    connections: ConnectionImpl[];
+  } {
+    const steps: PipelineStep[] = [];
+    const grid = new Grid(
+      { width: this.config.width, height: this.config.height },
+      CellType.WALL,
+    );
+    let rooms: RoomImpl[] = [];
+    let connections: ConnectionImpl[] = [];
 
-		// Generate connections
-		const connections = this.generateConnections(rooms);
+    // Initialize grid walls
+    steps.push({
+      id: "bsp.grid",
+      io: { reads: [], writes: ["grid.base"] },
+      run: (ctx) => {
+        ctx.grid.base = grid;
+      },
+    });
 
-		// Create checksum
-		const checksum = this.calculateChecksum(rooms, connections);
+    // Partition and place rooms
+    steps.push({
+      id: "bsp.rooms",
+      io: { reads: ["grid.base"], writes: ["graphs.rooms"] },
+      dependsOn: ["bsp.grid"],
+      run: (ctx) => {
+        const rootSpace = {
+          x: 0,
+          y: 0,
+          width: this.config.width,
+          height: this.config.height,
+        };
+        const spaces = this.generateSpaces(rootSpace);
+        rooms = this.createRoomsFromSpaces(spaces) as unknown as RoomImpl[];
+        ctx.graphs.rooms = rooms;
+      },
+    });
 
-		return new DungeonImpl({
-			rooms,
-			connections,
-			config: this.config,
-			seeds: this.seeds,
-			checksum,
-		});
-	}
+    // Connect rooms (simple paths)
+    steps.push({
+      id: "bsp.paths",
+      io: { reads: ["graphs.rooms"], writes: ["graphs.connections"] },
+      dependsOn: ["bsp.rooms"],
+      run: (ctx) => {
+        connections = this.generateConnections(
+          rooms,
+        ) as unknown as ConnectionImpl[];
+        ctx.graphs.connections = connections;
+      },
+    });
 
-	private generateSpaces(space: any, depth = 0): any[] {
-		const maxDepth =
-			Math.log2(Math.max(this.config.width, this.config.height)) - 2;
+    // Compose onto grid
+    steps.push({
+      id: "bsp.compose",
+      io: {
+        reads: ["grid.base", "graphs.rooms", "graphs.connections"],
+        writes: ["grid.base"],
+      },
+      dependsOn: ["bsp.paths"],
+      run: (ctx) => {
+        // carve rooms
+        for (const r of rooms) {
+          grid.fillRect(r.x, r.y, r.width, r.height, CellType.FLOOR);
+        }
+        // carve simple corridor cells
+        for (const c of connections) {
+          for (const p of c.path) {
+            const x = Math.floor(p.x),
+              y = Math.floor(p.y);
+            if (grid.isInBounds(x, y)) grid.setCell(x, y, CellType.FLOOR);
+          }
+        }
+        ctx.grid.base = grid;
+      },
+    });
 
-		// Stop recursion if space is too small or depth too deep
-		if (
-			space.width < this.MIN_ROOM_SIZE * 2 ||
-			space.height < this.MIN_ROOM_SIZE * 2 ||
-			depth > maxDepth
-		) {
-			return [space];
-		}
+    const pipeline: Pipeline = { steps };
+    const ctx: GenContext = {
+      grid: { base: grid, layers: new Map() },
+      graphs: { rooms: [], connections: [], regions: [] },
+      config: this.config,
+      meta: new Map(),
+    };
+    const runner = new PipelineRunner(pipeline);
+    runner.runSync(ctx);
+    return { grid, rooms, connections };
+  }
 
-		// Decide split orientation
-		const splitHorizontal = this.layoutRng.next() > 0.5;
-		const spaces = [];
+  private generateSpaces(
+    space: { x: number; y: number; width: number; height: number },
+    depth = 0,
+  ): Array<{ x: number; y: number; width: number; height: number }> {
+    const maxDepth =
+      Math.log2(Math.max(this.config.width, this.config.height)) - 2;
 
-		if (splitHorizontal) {
-			const splitRatio = this.layoutRng.range(
-				this.MIN_SPLIT_RATIO,
-				this.MAX_SPLIT_RATIO
-			);
-			const splitY = Math.floor(space.y + space.height * splitRatio);
+    // Stop recursion if space is too small or depth too deep
+    if (
+      space.width < this.MIN_ROOM_SIZE * 2 ||
+      space.height < this.MIN_ROOM_SIZE * 2 ||
+      depth > maxDepth
+    ) {
+      return [space];
+    }
 
-			spaces.push(
-				{
-					x: space.x,
-					y: space.y,
-					width: space.width,
-					height: splitY - space.y,
-				},
-				{
-					x: space.x,
-					y: splitY,
-					width: space.width,
-					height: space.height - (splitY - space.y),
-				}
-			);
-		} else {
-			const splitRatio = this.layoutRng.range(
-				this.MIN_SPLIT_RATIO,
-				this.MAX_SPLIT_RATIO
-			);
-			const splitX = Math.floor(space.x + space.width * splitRatio);
+    // Decide split orientation
+    const splitHorizontal = this.layoutRng.next() > 0.5;
+    const spaces: Array<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }> = [];
 
-			spaces.push(
-				{
-					x: space.x,
-					y: space.y,
-					width: splitX - space.x,
-					height: space.height,
-				},
-				{
-					x: splitX,
-					y: space.y,
-					width: space.width - (splitX - space.x),
-					height: space.height,
-				}
-			);
-		}
+    if (splitHorizontal) {
+      const splitRatio = this.layoutRng.range(
+        this.MIN_SPLIT_RATIO,
+        this.MAX_SPLIT_RATIO,
+      );
+      const splitY = Math.floor(space.y + space.height * splitRatio);
 
-		// Recursively split child spaces
-		const result = [];
-		for (const childSpace of spaces) {
-			result.push(...this.generateSpaces(childSpace, depth + 1));
-		}
+      spaces.push(
+        {
+          x: space.x,
+          y: space.y,
+          width: space.width,
+          height: splitY - space.y,
+        },
+        {
+          x: space.x,
+          y: splitY,
+          width: space.width,
+          height: space.height - (splitY - space.y),
+        },
+      );
+    } else {
+      const splitRatio = this.layoutRng.range(
+        this.MIN_SPLIT_RATIO,
+        this.MAX_SPLIT_RATIO,
+      );
+      const splitX = Math.floor(space.x + space.width * splitRatio);
 
-		return result;
-	}
+      spaces.push(
+        {
+          x: space.x,
+          y: space.y,
+          width: splitX - space.x,
+          height: space.height,
+        },
+        {
+          x: splitX,
+          y: space.y,
+          width: space.width - (splitX - space.x),
+          height: space.height,
+        },
+      );
+    }
 
-	private createRoomsFromSpaces(spaces: any[]): any[] {
-		return spaces.map((space, index) => {
-			// Create room smaller than space for corridors
-			const margin = 2;
-			const roomWidth = Math.max(
-				this.MIN_ROOM_SIZE,
-				space.width - margin * 2 - this.roomsRng.range(0, space.width * 0.3)
-			);
-			const roomHeight = Math.max(
-				this.MIN_ROOM_SIZE,
-				space.height - margin * 2 - this.roomsRng.range(0, space.height * 0.3)
-			);
+    // Recursively split child spaces
+    const result: Array<{
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }> = [];
+    for (const childSpace of spaces) {
+      result.push(...this.generateSpaces(childSpace, depth + 1));
+    }
 
-			const roomX =
-				space.x +
-				margin +
-				this.roomsRng.range(0, space.width - roomWidth - margin * 2);
-			const roomY =
-				space.y +
-				margin +
-				this.roomsRng.range(0, space.height - roomHeight - margin * 2);
+    return result;
+  }
 
-			const roomType = this.roomsRng.choice(["normal", "treasure", "monster"]);
+  private createRoomsFromSpaces(
+    spaces: Array<{ x: number; y: number; width: number; height: number }>,
+  ): RoomImpl[] {
+    return spaces.map((space, index) => {
+      // Create room smaller than space for corridors
+      const margin = 2;
+      const roomWidth = Math.max(
+        this.MIN_ROOM_SIZE,
+        space.width - margin * 2 - this.roomsRng.range(0, space.width * 0.3),
+      );
+      const roomHeight = Math.max(
+        this.MIN_ROOM_SIZE,
+        space.height - margin * 2 - this.roomsRng.range(0, space.height * 0.3),
+      );
 
-			return {
-				id: index,
-				x: roomX,
-				y: roomY,
-				width: roomWidth,
-				height: roomHeight,
-				type: roomType,
-				seed: this.roomsRng.range(0, 999999),
-				centerX: roomX + Math.floor(roomWidth / 2),
-				centerY: roomY + Math.floor(roomHeight / 2),
-			};
-		});
-	}
+      const roomX =
+        space.x +
+        margin +
+        this.roomsRng.range(0, space.width - roomWidth - margin * 2);
+      const roomY =
+        space.y +
+        margin +
+        this.roomsRng.range(0, space.height - roomHeight - margin * 2);
 
-	private generateConnections(rooms: any[]): any[] {
-		const connections = [];
+      const roomType = this.roomsRng.choice(["normal", "treasure", "monster"]);
 
-		// Simple connection strategy: connect each room to the next
-		for (let i = 0; i < rooms.length - 1; i++) {
-			const room1 = rooms[i];
-			const room2 = rooms[i + 1];
+      return {
+        id: index,
+        x: roomX,
+        y: roomY,
+        width: roomWidth,
+        height: roomHeight,
+        type: roomType,
+        seed: this.roomsRng.range(0, 999999),
+        get centerX() {
+          return roomX + Math.floor(roomWidth / 2);
+        },
+        get centerY() {
+          return roomY + Math.floor(roomHeight / 2);
+        },
+      } as unknown as RoomImpl;
+    });
+  }
 
-			connections.push({
-				from: room1,
-				to: room2,
-				path: this.createSimplePath(room1, room2),
-			});
-		}
+  private generateConnections(rooms: RoomImpl[]): ConnectionImpl[] {
+    const connections: ConnectionImpl[] = [] as unknown as ConnectionImpl[];
 
-		return connections;
-	}
+    // Simple connection strategy: connect each room to the next
+    for (let i = 0; i < rooms.length - 1; i++) {
+      const room1 = rooms[i];
+      const room2 = rooms[i + 1];
 
-	private createSimplePath(room1: any, room2: any): any[] {
-		const path = [];
-		const steps = Math.max(
-			Math.abs(room2.centerX - room1.centerX),
-			Math.abs(room2.centerY - room1.centerY)
-		);
+      connections.push({
+        from: room1,
+        to: room2,
+        path: this.createSimplePath(room1, room2),
+        style: "straight",
+      } as unknown as ConnectionImpl);
+    }
 
-		for (let i = 0; i <= steps; i++) {
-			const t = steps > 0 ? i / steps : 0;
-			const x = Math.round(room1.centerX + (room2.centerX - room1.centerX) * t);
-			const y = Math.round(room1.centerY + (room2.centerY - room1.centerY) * t);
-			path.push({ x, y });
-		}
+    return connections;
+  }
 
-		return path;
-	}
+  private createSimplePath(
+    room1: RoomImpl,
+    room2: RoomImpl,
+  ): Array<{ x: number; y: number }> {
+    const path: Array<{ x: number; y: number }> = [];
+    const steps = Math.max(
+      Math.abs(room2.centerX - room1.centerX),
+      Math.abs(room2.centerY - room1.centerY),
+    );
 
-	private calculateChecksum(rooms: any[], connections: any[]): string {
-		const data = [
-			...rooms.map((r) => `${r.x},${r.y},${r.width},${r.height},${r.type}`),
-			...connections.map((c) => `${c.from.id}-${c.to.id}`),
-		].join("|");
+    for (let i = 0; i <= steps; i++) {
+      const t = steps > 0 ? i / steps : 0;
+      const x = Math.round(room1.centerX + (room2.centerX - room1.centerX) * t);
+      const y = Math.round(room1.centerY + (room2.centerY - room1.centerY) * t);
+      path.push({ x, y });
+    }
 
-		let hash = 5381;
-		for (let i = 0; i < data.length; i++) {
-			const char = data.charCodeAt(i);
-			hash = (hash << 5) + hash + char;
-			hash = hash >>> 0;
-		}
+    return path;
+  }
 
-		return Math.abs(hash >>> 0).toString(36);
-	}
+  private calculateChecksum(
+    rooms: RoomImpl[],
+    connections: ConnectionImpl[],
+  ): string {
+    const data = [
+      ...rooms.map((r) => `${r.x},${r.y},${r.width},${r.height},${r.type}`),
+      ...connections.map((c) => `${c.from.id}-${c.to.id}`),
+    ].join("|");
+
+    let hash = 5381;
+    for (let i = 0; i < data.length; i++) {
+      const char = data.charCodeAt(i);
+      hash = (hash << 5) + hash + char;
+      hash = hash >>> 0;
+    }
+
+    return Math.abs(hash >>> 0).toString(36);
+  }
 }

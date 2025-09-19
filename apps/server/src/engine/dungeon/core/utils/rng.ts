@@ -10,7 +10,7 @@
  * @returns A random integer between min and max
  */
 export function range(rng: () => number, min: number, max: number): number {
-	return ~~(rng() * (max - min + 1)) + min;
+  return ~~(rng() * (max - min + 1)) + min;
 }
 
 /**
@@ -20,7 +20,7 @@ export function range(rng: () => number, min: number, max: number): number {
  * @returns A random choice from the array
  */
 export function choice<T>(rng: () => number, array: T[]): T {
-	return array[range(rng, 0, array.length - 1)];
+  return array[range(rng, 0, array.length - 1)];
 }
 
 /**
@@ -30,12 +30,12 @@ export function choice<T>(rng: () => number, array: T[]): T {
  * @returns The shuffled array
  */
 export function shuffle<T>(rng: () => number, array: T[]): T[] {
-	const result = [...array];
-	for (let i = result.length - 1; i > 0; i--) {
-		const j = range(rng, 0, i);
-		[result[i], result[j]] = [result[j], result[i]];
-	}
-	return result;
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = range(rng, 0, i);
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
 }
 
 /**
@@ -44,5 +44,5 @@ export function shuffle<T>(rng: () => number, array: T[]): T[] {
  * @param chance - The probability of the boolean
  */
 export function probability(rng: () => number, chance: number): boolean {
-	return rng() < chance;
+  return rng() < chance;
 }

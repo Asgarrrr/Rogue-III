@@ -1,191 +1,202 @@
-import { Point, Bounds } from "./types";
+import type { Bounds, Point } from "./types";
 
 /**
  * Spatial hash for fast 2D spatial queries.
  * Divides space into uniform grid cells and maps objects to cells for O(1) average lookup.
  */
 export class SpatialHash<T> {
-	private readonly cellSize: number;
-	private readonly cells: Map<string, T[]>;
-	private readonly bounds: Bounds;
+  private readonly cellSize: number;
+  private readonly cells: Map<string, T[]>;
+  private bounds: Bounds;
 
-	constructor(cellSize: number, bounds: Bounds) {
-		this.cellSize = cellSize;
-		this.cells = new Map();
-		this.bounds = bounds;
-	}
+  constructor(cellSize: number, bounds: Bounds) {
+    this.cellSize = cellSize;
+    this.cells = new Map();
+    this.bounds = bounds;
+  }
 
-	/**
-	 * Convert world coordinates to cell key
-	 */
-	private getCellKey(x: number, y: number): string {
-		const cellX = Math.floor(x / this.cellSize);
-		const cellY = Math.floor(y / this.cellSize);
-		return `${cellX},${cellY}`;
-	}
+  /**
+   * Update world bounds used for bookkeeping/diagnostics
+   */
+  setBounds(bounds: Bounds): void {
+    this.bounds = bounds;
+  }
 
-	/**
-	 * Get all cell keys that intersect with a rectangular area
-	 */
-	private getCellKeysInRect(
-		x: number,
-		y: number,
-		width: number,
-		height: number
-	): string[] {
-		const keys: string[] = [];
-		const startCellX = Math.floor(x / this.cellSize);
-		const startCellY = Math.floor(y / this.cellSize);
-		const endCellX = Math.floor((x + width - 1) / this.cellSize);
-		const endCellY = Math.floor((y + height - 1) / this.cellSize);
+  /**
+   * Convert world coordinates to cell key
+   */
+  private getCellKey(x: number, y: number): string {
+    const cellX = Math.floor(x / this.cellSize);
+    const cellY = Math.floor(y / this.cellSize);
+    return `${cellX},${cellY}`;
+  }
 
-		for (let cellY = startCellY; cellY <= endCellY; cellY++) {
-			for (let cellX = startCellX; cellX <= endCellX; cellX++) {
-				keys.push(`${cellX},${cellY}`);
-			}
-		}
+  /**
+   * Get all cell keys that intersect with a rectangular area
+   */
+  private getCellKeysInRect(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ): string[] {
+    const keys: string[] = [];
+    const startCellX = Math.floor(x / this.cellSize);
+    const startCellY = Math.floor(y / this.cellSize);
+    const endCellX = Math.floor((x + width - 1) / this.cellSize);
+    const endCellY = Math.floor((y + height - 1) / this.cellSize);
 
-		return keys;
-	}
+    for (let cellY = startCellY; cellY <= endCellY; cellY++) {
+      for (let cellX = startCellX; cellX <= endCellX; cellX++) {
+        keys.push(`${cellX},${cellY}`);
+      }
+    }
 
-	/**
-	 * Insert an object at a specific point
-	 */
-	insert(point: Point, object: T): void {
-		const key = this.getCellKey(point.x, point.y);
-		if (!this.cells.has(key)) {
-			this.cells.set(key, []);
-		}
-		this.cells.get(key)!.push(object);
-	}
+    return keys;
+  }
 
-	/**
-	 * Insert an object in a rectangular area
-	 */
-	insertRect(
-		x: number,
-		y: number,
-		width: number,
-		height: number,
-		object: T
-	): void {
-		const keys = this.getCellKeysInRect(x, y, width, height);
-		for (const key of keys) {
-			if (!this.cells.has(key)) {
-				this.cells.set(key, []);
-			}
-			this.cells.get(key)!.push(object);
-		}
-	}
+  /**
+   * Insert an object at a specific point
+   */
+  insert(point: Point, object: T): void {
+    const key = this.getCellKey(point.x, point.y);
+    if (!this.cells.has(key)) {
+      this.cells.set(key, []);
+    }
+    this.cells.get(key)!.push(object);
+  }
 
-	/**
-	 * Query objects near a point
-	 */
-	queryPoint(point: Point): T[] {
-		const key = this.getCellKey(point.x, point.y);
-		return this.cells.get(key) || [];
-	}
+  /**
+   * Insert an object in a rectangular area
+   */
+  insertRect(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    object: T,
+  ): void {
+    const keys = this.getCellKeysInRect(x, y, width, height);
+    for (const key of keys) {
+      if (!this.cells.has(key)) {
+        this.cells.set(key, []);
+      }
+      this.cells.get(key)!.push(object);
+    }
+  }
 
-	/**
-	 * Query objects in a rectangular area
-	 */
-	queryRect(x: number, y: number, width: number, height: number): T[] {
-		const objects = new Set<T>();
-		const keys = this.getCellKeysInRect(x, y, width, height);
+  /**
+   * Query objects near a point
+   */
+  queryPoint(point: Point): T[] {
+    const key = this.getCellKey(point.x, point.y);
+    return this.cells.get(key) || [];
+  }
 
-		for (const key of keys) {
-			const cellObjects = this.cells.get(key);
-			if (cellObjects) {
-				cellObjects.forEach((obj) => objects.add(obj));
-			}
-		}
+  /**
+   * Query objects in a rectangular area
+   */
+  queryRect(x: number, y: number, width: number, height: number): T[] {
+    const objects = new Set<T>();
+    const keys = this.getCellKeysInRect(x, y, width, height);
 
-		return Array.from(objects);
-	}
+    for (const key of keys) {
+      const cellObjects = this.cells.get(key);
+      if (cellObjects) {
+        cellObjects.forEach((obj) => {
+          objects.add(obj);
+        });
+      }
+    }
 
-	/**
-	 * Query objects within radius of a point
-	 */
-	queryRadius(center: Point, radius: number): T[] {
-		const radiusSquared = radius * radius;
-		const objects = this.queryRect(
-			center.x - radius,
-			center.y - radius,
-			radius * 2,
-			radius * 2
-		);
+    return Array.from(objects);
+  }
 
-		// Filter by actual distance
-		return objects.filter((obj) => {
-			if (typeof obj === "object" && obj !== null && "x" in obj && "y" in obj) {
-				const point = obj as unknown as Point;
-				const dx = point.x - center.x;
-				const dy = point.y - center.y;
-				return dx * dx + dy * dy <= radiusSquared;
-			}
-			return true; // Include non-point objects
-		});
-	}
+  /**
+   * Query objects within radius of a point
+   */
+  queryRadius(center: Point, radius: number): T[] {
+    const radiusSquared = radius * radius;
+    const objects = this.queryRect(
+      center.x - radius,
+      center.y - radius,
+      radius * 2,
+      radius * 2,
+    );
 
-	/**
-	 * Remove an object from a specific point
-	 */
-	remove(point: Point, object: T): boolean {
-		const key = this.getCellKey(point.x, point.y);
-		const cell = this.cells.get(key);
-		if (!cell) return false;
+    // Filter by actual distance
+    return objects.filter((obj) => {
+      if (typeof obj === "object" && obj !== null && "x" in obj && "y" in obj) {
+        const point = obj as unknown as Point;
+        const dx = point.x - center.x;
+        const dy = point.y - center.y;
+        return dx * dx + dy * dy <= radiusSquared;
+      }
+      return true; // Include non-point objects
+    });
+  }
 
-		const index = cell.indexOf(object);
-		if (index === -1) return false;
+  /**
+   * Remove an object from a specific point
+   */
+  remove(point: Point, object: T): boolean {
+    const key = this.getCellKey(point.x, point.y);
+    const cell = this.cells.get(key);
+    if (!cell) return false;
 
-		cell.splice(index, 1);
-		if (cell.length === 0) {
-			this.cells.delete(key);
-		}
-		return true;
-	}
+    const index = cell.indexOf(object);
+    if (index === -1) return false;
 
-	/**
-	 * Clear all objects
-	 */
-	clear(): void {
-		this.cells.clear();
-	}
+    cell.splice(index, 1);
+    if (cell.length === 0) {
+      this.cells.delete(key);
+    }
+    return true;
+  }
 
-	/**
-	 * Get all objects in the hash
-	 */
-	getAllObjects(): T[] {
-		const objects = new Set<T>();
-		for (const cell of this.cells.values()) {
-			cell.forEach((obj) => objects.add(obj));
-		}
-		return Array.from(objects);
-	}
+  /**
+   * Clear all objects
+   */
+  clear(): void {
+    this.cells.clear();
+  }
 
-	/**
-	 * Get statistics about the spatial hash
-	 */
-	getStats(): {
-		totalCells: number;
-		totalObjects: number;
-		averageObjectsPerCell: number;
-		maxObjectsPerCell: number;
-	} {
-		let totalObjects = 0;
-		let maxObjectsPerCell = 0;
+  /**
+   * Get all objects in the hash
+   */
+  getAllObjects(): T[] {
+    const objects = new Set<T>();
+    for (const cell of this.cells.values()) {
+      for (const obj of cell) {
+        objects.add(obj);
+      }
+    }
+    return Array.from(objects);
+  }
 
-		for (const cell of this.cells.values()) {
-			totalObjects += cell.length;
-			maxObjectsPerCell = Math.max(maxObjectsPerCell, cell.length);
-		}
+  /**
+   * Get statistics about the spatial hash
+   */
+  getStats(): {
+    totalCells: number;
+    totalObjects: number;
+    averageObjectsPerCell: number;
+    maxObjectsPerCell: number;
+  } {
+    let totalObjects = 0;
+    let maxObjectsPerCell = 0;
 
-		return {
-			totalCells: this.cells.size,
-			totalObjects,
-			averageObjectsPerCell:
-				this.cells.size > 0 ? totalObjects / this.cells.size : 0,
-			maxObjectsPerCell,
-		};
-	}
+    for (const cell of this.cells.values()) {
+      totalObjects += cell.length;
+      maxObjectsPerCell = Math.max(maxObjectsPerCell, cell.length);
+    }
+
+    return {
+      totalCells: this.cells.size,
+      totalObjects,
+      averageObjectsPerCell:
+        this.cells.size > 0 ? totalObjects / this.cells.size : 0,
+      maxObjectsPerCell,
+    };
+  }
 }

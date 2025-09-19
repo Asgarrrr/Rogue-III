@@ -20,7 +20,7 @@ export * from "./path-finder";
 
 // Re-export main generator and default config for convenience
 export {
-	CellularGenerator,
-	DEFAULT_CELLULAR_CONFIG,
-	type CellularGeneratorConfig,
+  CellularGenerator,
+  DEFAULT_CELLULAR_CONFIG,
+  type CellularGeneratorConfig,
 } from "./cellular-generator";

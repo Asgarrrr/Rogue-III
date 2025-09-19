@@ -37,6 +37,13 @@
         "bun-types": "latest",
       },
     },
+    "packages/contracts": {
+      "name": "@rogue/contracts",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.1.5",
+      },
+    },
     "packages/typescript-config": {
       "name": "@repo/typescript-config",
       "version": "0.0.0",
@@ -120,6 +127,8 @@
     "@rogue-iii/client": ["@rogue-iii/client@workspace:apps/client"],
 
     "@rogue-iii/server": ["@rogue-iii/server@workspace:apps/server"],
+
+    "@rogue/contracts": ["@rogue/contracts@workspace:packages/contracts"],
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.0-beta.32", "", {}, "sha512-QReCdvxiUZAPkvp1xpAg62IeNzykOFA6syH2CnClif4YmALN1XKpB39XneL80008UbtMShthSVDKmrx05N1q/g=="],
 

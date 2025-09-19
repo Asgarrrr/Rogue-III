@@ -1,29 +1,34 @@
-import { Grid, CellType, Region, SpatialHash } from "../../../core/grid";
-import { SeededRandom } from "../../../core/random/seeded-random";
+import {
+  CellType,
+  type Grid,
+  type Region,
+  SpatialHash,
+} from "../../../core/grid";
+import type { SeededRandom } from "../../../core/random/seeded-random";
 import { RoomImpl } from "../../../entities/room";
 
 /**
  * Configuration for room placement
  */
 export interface RoomPlacementConfig {
-	readonly minRoomSize: number;
-	readonly maxRoomSize: number;
-	readonly roomCount: number;
-	readonly minRoomSpacing: number;
-	readonly maxPlacementAttempts: number;
-	readonly roomTypes: readonly string[];
+  readonly minRoomSize: number;
+  readonly maxRoomSize: number;
+  readonly roomCount: number;
+  readonly minRoomSpacing: number;
+  readonly maxPlacementAttempts: number;
+  readonly roomTypes: readonly string[];
 }
 
 /**
  * Default room placement configuration
  */
 export const DEFAULT_ROOM_PLACEMENT_CONFIG: RoomPlacementConfig = {
-	minRoomSize: 4,
-	maxRoomSize: 12,
-	roomCount: 8,
-	minRoomSpacing: 2,
-	maxPlacementAttempts: 50,
-	roomTypes: ["normal", "treasure", "monster", "special"] as const,
+  minRoomSize: 4,
+  maxRoomSize: 12,
+  roomCount: 8,
+  minRoomSpacing: 2,
+  maxPlacementAttempts: 50, // Restored to original value
+  roomTypes: ["normal", "treasure", "monster", "special"] as const,
 };
 
 /**
@@ -31,451 +36,497 @@ export const DEFAULT_ROOM_PLACEMENT_CONFIG: RoomPlacementConfig = {
  * Uses spatial hashing for efficient collision detection and overlap prevention.
  */
 export class RoomPlacer {
-	private readonly config: RoomPlacementConfig;
-	private readonly rng: SeededRandom;
-	private readonly spatialHash: SpatialHash<RoomImpl>;
+  private readonly config: RoomPlacementConfig;
+  private readonly rng: SeededRandom;
+  private readonly spatialHash: SpatialHash<RoomImpl>;
 
-	constructor(config: RoomPlacementConfig, rng: SeededRandom) {
-		this.config = config;
-		this.rng = rng;
+  constructor(config: RoomPlacementConfig, rng: SeededRandom) {
+    this.config = config;
+    this.rng = rng;
 
-		// Initialize spatial hash with cell size optimized for room sizes
-		const avgRoomSize = (config.minRoomSize + config.maxRoomSize) / 2;
-		this.spatialHash = new SpatialHash(
-			avgRoomSize + config.minRoomSpacing,
-			{ minX: 0, minY: 0, maxX: 1000, maxY: 1000 } // Will be updated per grid
-		);
-	}
+    // Initialize spatial hash with cell size optimized for room sizes
+    const avgRoomSize = (config.minRoomSize + config.maxRoomSize) / 2;
+    this.spatialHash = new SpatialHash(avgRoomSize + config.minRoomSpacing, {
+      minX: 0,
+      minY: 0,
+      maxX: 1000,
+      maxY: 1000,
+    });
+  }
 
-	/**
-	 * Place rooms in suitable caverns
-	 */
-	placeRooms(caverns: Region[], grid: Grid): RoomImpl[] {
-		this.spatialHash.clear();
-		const rooms: RoomImpl[] = [];
+  /**
+   * Place rooms in suitable caverns
+   */
+  placeRooms(caverns: Region[], grid: Grid): RoomImpl[] {
+    this.spatialHash.clear();
+    // Ensure spatial hash bounds reflect current grid size
+    this.spatialHash.setBounds({
+      minX: 0,
+      minY: 0,
+      maxX: grid.width,
+      maxY: grid.height,
+    });
+    const rooms: RoomImpl[] = [];
 
-		// Sort caverns by size (largest first) for better room placement
-		const sortedCaverns = [...caverns].sort((a, b) => b.size - a.size);
+    // Sort caverns by size (largest first) for better room placement
+    const sortedCaverns = [...caverns].sort((a, b) => b.size - a.size);
 
-		let roomId = 0;
-		let totalAttempts = 0;
-		const maxTotalAttempts =
-			this.config.maxPlacementAttempts * this.config.roomCount;
+    // Pre-compute cavern point maps for faster lookup
+    const cavernMaps = new Map<number, Set<string>>();
+    for (const cavern of sortedCaverns) {
+      cavernMaps.set(
+        cavern.id,
+        new Set(cavern.points.map((p) => `${p.x},${p.y}`)),
+      );
+    }
 
-		for (const cavern of sortedCaverns) {
-			if (
-				rooms.length >= this.config.roomCount ||
-				totalAttempts >= maxTotalAttempts
-			) {
-				break;
-			}
+    let roomId = 0;
+    let totalAttempts = 0;
+    const maxTotalAttempts =
+      this.config.maxPlacementAttempts * this.config.roomCount;
 
-			const cavernRooms = this.placeRoomsInCavern(
-				cavern,
-				grid,
-				roomId,
-				rooms.length
-			);
+    for (const cavern of sortedCaverns) {
+      if (
+        rooms.length >= this.config.roomCount ||
+        totalAttempts >= maxTotalAttempts
+      ) {
+        break;
+      }
 
-			for (const room of cavernRooms) {
-				if (rooms.length < this.config.roomCount) {
-					rooms.push(room);
-					this.spatialHash.insertRect(
-						room.x,
-						room.y,
-						room.width,
-						room.height,
-						room
-					);
-					roomId++;
-				}
-			}
+      const cmap = cavernMaps.get(cavern.id);
+      if (!cmap) continue;
+      const cavernRooms = this.placeRoomsInCavern(
+        cavern,
+        grid,
+        roomId,
+        rooms.length,
+        cmap,
+      );
 
-			totalAttempts += this.config.maxPlacementAttempts;
-		}
+      for (const room of cavernRooms) {
+        if (rooms.length < this.config.roomCount) {
+          rooms.push(room);
+          this.spatialHash.insertRect(
+            room.x,
+            room.y,
+            room.width,
+            room.height,
+            room,
+          );
+          roomId++;
+        }
+      }
 
-		return rooms;
-	}
+      totalAttempts += this.config.maxPlacementAttempts;
+    }
 
-	/**
-	 * Place multiple rooms within a single cavern
-	 */
-	private placeRoomsInCavern(
-		cavern: Region,
-		grid: Grid,
-		startRoomId: number,
-		existingRoomCount: number
-	): RoomImpl[] {
-		const rooms: RoomImpl[] = [];
-		const remainingRooms = this.config.roomCount - existingRoomCount;
+    return rooms;
+  }
 
-		if (remainingRooms <= 0) return rooms;
+  /**
+   * Place multiple rooms within a single cavern
+   */
+  private placeRoomsInCavern(
+    cavern: Region,
+    grid: Grid,
+    startRoomId: number,
+    existingRoomCount: number,
+    cavernPointMap: Set<string>,
+  ): RoomImpl[] {
+    const rooms: RoomImpl[] = [];
+    const remainingRooms = this.config.roomCount - existingRoomCount;
 
-		// Estimate how many rooms can fit in this cavern
-		const cavernArea = cavern.size;
-		const avgRoomArea =
-			((this.config.minRoomSize + this.config.maxRoomSize) / 2) ** 2;
-		const estimatedCapacity = Math.floor(cavernArea / (avgRoomArea * 3)); // Factor of 3 for spacing
+    if (remainingRooms <= 0) return rooms;
 
-		const roomsToPlace = Math.min(remainingRooms, estimatedCapacity, 3); // Max 3 rooms per cavern
+    // Estimate how many rooms can fit in this cavern
+    const cavernArea = cavern.size;
+    const avgRoomArea =
+      ((this.config.minRoomSize + this.config.maxRoomSize) / 2) ** 2;
+    const estimatedCapacity = Math.floor(cavernArea / (avgRoomArea * 2)); // Reduced factor from 3 to 2 for better room density
 
-		for (let i = 0; i < roomsToPlace; i++) {
-			const room = this.placeSingleRoomInCavern(
-				cavern,
-				grid,
-				startRoomId + i,
-				[...rooms] // Pass copy to avoid mutation during iteration
-			);
+    const roomsToPlace = Math.min(remainingRooms, estimatedCapacity, 4); // Increased max from 3 to 4 rooms per cavern
 
-			if (room) {
-				rooms.push(room);
-			}
-		}
+    for (let i = 0; i < roomsToPlace; i++) {
+      const room = this.placeSingleRoomInCavern(
+        cavern,
+        grid,
+        startRoomId + i,
+        [...rooms], // Pass copy to avoid mutation during iteration
+        cavernPointMap,
+      );
 
-		return rooms;
-	}
+      if (room) {
+        rooms.push(room);
+      }
+    }
 
-	/**
-	 * Place a single room within a cavern
-	 */
-	private placeSingleRoomInCavern(
-		cavern: Region,
-		grid: Grid,
-		roomId: number,
-		existingRooms: RoomImpl[]
-	): RoomImpl | null {
-		const bounds = cavern.bounds;
-		const cavernWidth = bounds.maxX - bounds.minX + 1;
-		const cavernHeight = bounds.maxY - bounds.minY + 1;
+    return rooms;
+  }
 
-		// Early exit if cavern is too small
-		if (
-			cavernWidth < this.config.minRoomSize + 4 ||
-			cavernHeight < this.config.minRoomSize + 4
-		) {
-			return null;
-		}
+  /**
+   * Place a single room within a cavern
+   */
+  private placeSingleRoomInCavern(
+    cavern: Region,
+    grid: Grid,
+    roomId: number,
+    existingRooms: RoomImpl[],
+    cavernPointMap: Set<string>,
+  ): RoomImpl | null {
+    const bounds = cavern.bounds;
+    const cavernWidth = bounds.maxX - bounds.minX + 1;
+    const cavernHeight = bounds.maxY - bounds.minY + 1;
 
-		for (
-			let attempt = 0;
-			attempt < this.config.maxPlacementAttempts;
-			attempt++
-		) {
-			// Generate room dimensions
-			const roomWidth = this.rng.range(
-				this.config.minRoomSize,
-				Math.min(this.config.maxRoomSize, cavernWidth - 4)
-			);
-			const roomHeight = this.rng.range(
-				this.config.minRoomSize,
-				Math.min(this.config.maxRoomSize, cavernHeight - 4)
-			);
+    // Early exit if cavern is too small
+    if (
+      cavernWidth < this.config.minRoomSize + 4 ||
+      cavernHeight < this.config.minRoomSize + 4
+    ) {
+      return null;
+    }
 
-			// Generate room position within cavern bounds
-			const roomX = this.rng.range(
-				bounds.minX + 2,
-				bounds.maxX - roomWidth - 1
-			);
-			const roomY = this.rng.range(
-				bounds.minY + 2,
-				bounds.maxY - roomHeight - 1
-			);
+    for (
+      let attempt = 0;
+      attempt < this.config.maxPlacementAttempts;
+      attempt++
+    ) {
+      // Generate room dimensions
+      const roomWidth = this.rng.range(
+        this.config.minRoomSize,
+        Math.min(this.config.maxRoomSize, cavernWidth - 4),
+      );
+      const roomHeight = this.rng.range(
+        this.config.minRoomSize,
+        Math.min(this.config.maxRoomSize, cavernHeight - 4),
+      );
 
-			// Check if room fits within cavern and doesn't overlap
-			if (
-				this.isValidRoomPlacement(
-					roomX,
-					roomY,
-					roomWidth,
-					roomHeight,
-					cavern,
-					grid,
-					existingRooms
-				)
-			) {
-				const roomType = this.selectRoomType();
+      // Generate room position within cavern bounds
+      const roomX = this.rng.range(
+        bounds.minX + 2,
+        bounds.maxX - roomWidth - 1,
+      );
+      const roomY = this.rng.range(
+        bounds.minY + 2,
+        bounds.maxY - roomHeight - 1,
+      );
 
-				return new RoomImpl({
-					id: roomId,
-					x: roomX,
-					y: roomY,
-					width: roomWidth,
-					height: roomHeight,
-					type: roomType,
-					seed: this.rng.range(0, 999999),
-				});
-			}
-		}
+      // Check if room fits within cavern and doesn't overlap
+      if (
+        this.isValidRoomPlacement(
+          roomX,
+          roomY,
+          roomWidth,
+          roomHeight,
+          grid,
+          existingRooms,
+          cavernPointMap,
+        )
+      ) {
+        const roomType = this.selectRoomType();
 
-		return null;
-	}
+        return new RoomImpl({
+          id: roomId,
+          x: roomX,
+          y: roomY,
+          width: roomWidth,
+          height: roomHeight,
+          type: roomType,
+          seed: this.rng.range(0, 999999),
+        });
+      }
+    }
 
-	/**
-	 * Validate room placement against all constraints
-	 */
-	private isValidRoomPlacement(
-		x: number,
-		y: number,
-		width: number,
-		height: number,
-		cavern: Region,
-		grid: Grid,
-		existingRooms: RoomImpl[]
-	): boolean {
-		// Check bounds
-		if (
-			x < 0 ||
-			y < 0 ||
-			x + width >= grid.width ||
-			y + height >= grid.height
-		) {
-			return false;
-		}
+    return null;
+  }
 
-		// Check if room area is mostly within cavern floor
-		if (!this.isRoomInCavern(x, y, width, height, cavern, grid)) {
-			return false;
-		}
+  /**
+   * Validate room placement against all constraints
+   */
+  private isValidRoomPlacement(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    grid: Grid,
+    existingRooms: RoomImpl[],
+    cavernPointMap: Set<string>,
+  ): boolean {
+    // Check bounds
+    if (
+      x < 0 ||
+      y < 0 ||
+      x + width >= grid.width ||
+      y + height >= grid.height
+    ) {
+      return false;
+    }
 
-		// Check overlap with existing rooms using spatial hash
-		const nearbyRooms = this.spatialHash.queryRect(
-			x - this.config.minRoomSpacing,
-			y - this.config.minRoomSpacing,
-			width + 2 * this.config.minRoomSpacing,
-			height + 2 * this.config.minRoomSpacing
-		);
+    // Check if room area is mostly within cavern floor using pre-computed map
+    if (
+      !this.isRoomInCavernOptimized(x, y, width, height, grid, cavernPointMap)
+    ) {
+      return false;
+    }
 
-		for (const room of nearbyRooms) {
-			if (this.roomsOverlap(x, y, width, height, room)) {
-				return false;
-			}
-		}
+    // Check overlap with existing rooms using spatial hash
+    const nearbyRooms = this.spatialHash.queryRect(
+      x - this.config.minRoomSpacing,
+      y - this.config.minRoomSpacing,
+      width + 2 * this.config.minRoomSpacing,
+      height + 2 * this.config.minRoomSpacing,
+    );
 
-		// Additional check against rooms not yet in spatial hash
-		for (const room of existingRooms) {
-			if (this.roomsOverlap(x, y, width, height, room)) {
-				return false;
-			}
-		}
+    for (const room of nearbyRooms) {
+      if (this.roomsOverlap(x, y, width, height, room)) {
+        return false;
+      }
+    }
 
-		return true;
-	}
+    // Additional check against rooms not yet in spatial hash
+    for (const room of existingRooms) {
+      if (this.roomsOverlap(x, y, width, height, room)) {
+        return false;
+      }
+    }
 
-	/**
-	 * Check if room is sufficiently within cavern floor area
-	 */
-	private isRoomInCavern(
-		x: number,
-		y: number,
-		width: number,
-		height: number,
-		cavern: Region,
-		grid: Grid
-	): boolean {
-		let floorCells = 0;
-		const totalCells = width * height;
+    return true;
+  }
 
-		// Create a set for fast cavern point lookup
-		const cavernPoints = new Set(cavern.points.map((p) => `${p.x},${p.y}`));
+  /**
+   * Check if room is sufficiently within cavern floor area (optimized version)
+   */
+  private isRoomInCavernOptimized(
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    grid: Grid,
+    cavernPointMap: Set<string>,
+  ): boolean {
+    let floorCells = 0;
+    const totalCells = width * height;
 
-		for (let ry = y; ry < y + height; ry++) {
-			for (let rx = x; rx < x + width; rx++) {
-				if (
-					cavernPoints.has(`${rx},${ry}`) &&
-					grid.getCell(rx, ry) === CellType.FLOOR
-				) {
-					floorCells++;
-				}
-			}
-		}
+    for (let ry = y; ry < y + height; ry++) {
+      for (let rx = x; rx < x + width; rx++) {
+        if (
+          cavernPointMap.has(`${rx},${ry}`) &&
+          grid.getCell(rx, ry) === CellType.FLOOR
+        ) {
+          floorCells++;
+        }
+      }
+    }
 
-		const coverage = floorCells / totalCells;
-		return coverage >= 0.8; // At least 80% of room must be on cavern floor
-	}
+    const coverage = floorCells / totalCells;
+    return coverage >= 0.8; // Restored to original 80% coverage requirement
+  }
 
-	/**
-	 * Check if two rooms overlap (including spacing buffer)
-	 */
-	private roomsOverlap(
-		x1: number,
-		y1: number,
-		w1: number,
-		h1: number,
-		room2: RoomImpl
-	): boolean {
-		const spacing = this.config.minRoomSpacing;
+  /**
+   * Check if two rooms overlap (including spacing buffer)
+   */
+  private roomsOverlap(
+    x1: number,
+    y1: number,
+    w1: number,
+    h1: number,
+    room2: RoomImpl,
+  ): boolean {
+    const spacing = this.config.minRoomSpacing;
 
-		return !(
-			x1 + w1 + spacing <= room2.x ||
-			room2.x + room2.width + spacing <= x1 ||
-			y1 + h1 + spacing <= room2.y ||
-			room2.y + room2.height + spacing <= y1
-		);
-	}
+    return !(
+      x1 + w1 + spacing <= room2.x ||
+      room2.x + room2.width + spacing <= x1 ||
+      y1 + h1 + spacing <= room2.y ||
+      room2.y + room2.height + spacing <= y1
+    );
+  }
 
-	/**
-	 * Select room type based on weighted probabilities
-	 */
-	private selectRoomType(): string {
-		const weights = {
-			normal: 0.6,
-			treasure: 0.15,
-			monster: 0.2,
-			special: 0.05,
-		};
+  /**
+   * Select room type based on weighted probabilities
+   */
+  private selectRoomType(): string {
+    const weights = {
+      normal: 0.6,
+      treasure: 0.15,
+      monster: 0.2,
+      special: 0.05,
+    };
 
-		const random = this.rng.next();
-		let cumulativeWeight = 0;
+    const random = this.rng.next();
+    let cumulativeWeight = 0;
 
-		for (const [type, weight] of Object.entries(weights)) {
-			cumulativeWeight += weight;
-			if (random <= cumulativeWeight) {
-				return type;
-			}
-		}
+    for (const [type, weight] of Object.entries(weights)) {
+      cumulativeWeight += weight;
+      if (random <= cumulativeWeight) {
+        return type;
+      }
+    }
 
-		return "normal"; // Fallback
-	}
+    return "normal"; // Fallback
+  }
 
-	/**
-	 * Optimize room placement using simulated annealing
-	 */
-	optimizeRoomPlacement(
-		rooms: RoomImpl[],
-		caverns: Region[],
-		grid: Grid
-	): RoomImpl[] {
-		if (rooms.length === 0) return rooms;
+  /**
+   * Optimize room placement using simulated annealing (adaptive)
+   */
+  optimizeRoomPlacement(
+    rooms: RoomImpl[],
+    caverns: Region[],
+    grid: Grid,
+  ): RoomImpl[] {
+    if (rooms.length === 0) return rooms;
 
-		let currentRooms = [...rooms];
-		let bestRooms = [...rooms];
-		let bestScore = this.calculatePlacementScore(currentRooms, caverns);
+    const currentRooms = [...rooms];
+    let bestRooms = [...rooms];
+    let bestScore = this.calculatePlacementScore(currentRooms, caverns);
 
-		const maxIterations = 100;
-		let temperature = 1.0;
-		const coolingRate = 0.95;
+    // Adaptive optimization: fewer iterations if we have sufficient rooms
+    const roomRatio = rooms.length / this.config.roomCount;
+    const maxIterations = roomRatio >= 0.75 ? 25 : 50; // Reduced iterations significantly
 
-		for (let iteration = 0; iteration < maxIterations; iteration++) {
-			// Try to improve a random room's placement
-			const roomIndex = this.rng.range(0, currentRooms.length - 1);
-			const originalRoom = currentRooms[roomIndex];
+    let temperature = 1.0;
+    const coolingRate = 0.92; // Faster cooling
 
-			// Find the cavern this room belongs to
-			const cavern = this.findRoomCavern(originalRoom, caverns);
-			if (!cavern) continue;
+    // Early termination if placement is already good
+    if (roomRatio >= 0.8 && bestScore > rooms.length * 15) {
+      console.log(
+        `⚡ Skipping optimization - placement already good (score: ${bestScore})`,
+      );
+      return bestRooms;
+    }
 
-			// Try to place room in a better position
-			const otherRooms = currentRooms.filter((_, i) => i !== roomIndex);
-			const newRoom = this.placeSingleRoomInCavern(
-				cavern,
-				grid,
-				originalRoom.id,
-				otherRooms
-			);
+    for (let iteration = 0; iteration < maxIterations; iteration++) {
+      // Try to improve a random room's placement
+      const roomIndex = this.rng.range(0, currentRooms.length - 1);
+      const originalRoom = currentRooms[roomIndex];
 
-			if (newRoom) {
-				currentRooms[roomIndex] = newRoom;
-				const newScore = this.calculatePlacementScore(currentRooms, caverns);
+      // Find the cavern this room belongs to
+      const cavern = this.findRoomCavern(originalRoom, caverns);
+      if (!cavern) continue;
 
-				// Accept if better, or with probability based on temperature
-				const deltaScore = newScore - bestScore;
-				if (
-					deltaScore > 0 ||
-					Math.exp(deltaScore / temperature) > this.rng.next()
-				) {
-					if (newScore > bestScore) {
-						bestRooms = [...currentRooms];
-						bestScore = newScore;
-					}
-				} else {
-					// Revert change
-					currentRooms[roomIndex] = originalRoom;
-				}
-			}
+      // Create pre-computed cavern map for this iteration
+      const cavernPointMap = new Set(cavern.points.map((p) => `${p.x},${p.y}`));
 
-			temperature *= coolingRate;
-		}
+      // Try to place room in a better position
+      const otherRooms = currentRooms.filter((_, i) => i !== roomIndex);
+      const newRoom = this.placeSingleRoomInCavern(
+        cavern,
+        grid,
+        originalRoom.id,
+        otherRooms,
+        cavernPointMap,
+      );
 
-		return bestRooms;
-	}
+      if (newRoom) {
+        currentRooms[roomIndex] = newRoom;
+        const newScore = this.calculatePlacementScore(currentRooms, caverns);
 
-	/**
-	 * Calculate placement quality score
-	 */
-	private calculatePlacementScore(
-		rooms: RoomImpl[],
-		caverns: Region[]
-	): number {
-		let score = 0;
+        // Accept if better, or with probability based on temperature
+        const deltaScore = newScore - bestScore;
+        if (
+          deltaScore > 0 ||
+          Math.exp(deltaScore / temperature) > this.rng.next()
+        ) {
+          if (newScore > bestScore) {
+            bestRooms = [...currentRooms];
+            bestScore = newScore;
+          }
+        } else {
+          // Revert change
+          currentRooms[roomIndex] = originalRoom;
+        }
+      }
 
-		// Reward room count
-		score += rooms.length * 10;
+      temperature *= coolingRate;
 
-		// Reward good spacing
-		for (let i = 0; i < rooms.length; i++) {
-			for (let j = i + 1; j < rooms.length; j++) {
-				const distance = this.calculateRoomDistance(rooms[i], rooms[j]);
-				const optimalDistance =
-					(rooms[i].width +
-						rooms[i].height +
-						rooms[j].width +
-						rooms[j].height) /
-					2;
+      // Early termination if we reach a good score
+      if (bestScore > rooms.length * 20) {
+        console.log(
+          `⚡ Early termination at iteration ${iteration} (score: ${bestScore})`,
+        );
+        break;
+      }
+    }
 
-				if (distance > optimalDistance) {
-					score += 5; // Good spacing
-				} else if (distance < optimalDistance * 0.5) {
-					score -= 10; // Too close
-				}
-			}
-		}
+    return bestRooms;
+  }
 
-		// Reward cavern utilization
-		const cavernUsage = this.calculateCavernUsage(rooms, caverns);
-		score += cavernUsage * 20;
+  /**
+   * Calculate placement quality score
+   */
+  private calculatePlacementScore(
+    rooms: RoomImpl[],
+    caverns: Region[],
+  ): number {
+    let score = 0;
 
-		return score;
-	}
+    // Reward room count
+    score += rooms.length * 10;
 
-	/**
-	 * Calculate distance between room centers
-	 */
-	private calculateRoomDistance(room1: RoomImpl, room2: RoomImpl): number {
-		const dx = room1.centerX - room2.centerX;
-		const dy = room1.centerY - room2.centerY;
-		return Math.sqrt(dx * dx + dy * dy);
-	}
+    // Reward good spacing
+    for (let i = 0; i < rooms.length; i++) {
+      for (let j = i + 1; j < rooms.length; j++) {
+        const distance = this.calculateRoomDistance(rooms[i], rooms[j]);
+        const optimalDistance =
+          (rooms[i].width +
+            rooms[i].height +
+            rooms[j].width +
+            rooms[j].height) /
+          2;
 
-	/**
-	 * Calculate how well rooms utilize available caverns
-	 */
-	private calculateCavernUsage(rooms: RoomImpl[], caverns: Region[]): number {
-		const usedCaverns = new Set<number>();
+        if (distance > optimalDistance) {
+          score += 5; // Good spacing
+        } else if (distance < optimalDistance * 0.5) {
+          score -= 10; // Too close
+        }
+      }
+    }
 
-		for (const room of rooms) {
-			const cavern = this.findRoomCavern(room, caverns);
-			if (cavern) {
-				usedCaverns.add(cavern.id);
-			}
-		}
+    // Reward cavern utilization
+    const cavernUsage = this.calculateCavernUsage(rooms, caverns);
+    score += cavernUsage * 20;
 
-		return usedCaverns.size / Math.max(caverns.length, 1);
-	}
+    return score;
+  }
 
-	/**
-	 * Find which cavern contains a room
-	 */
-	private findRoomCavern(room: RoomImpl, caverns: Region[]): Region | null {
-		const roomCenter = { x: room.centerX, y: room.centerY };
+  /**
+   * Calculate distance between room centers
+   */
+  private calculateRoomDistance(room1: RoomImpl, room2: RoomImpl): number {
+    const dx = room1.centerX - room2.centerX;
+    const dy = room1.centerY - room2.centerY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
 
-		for (const cavern of caverns) {
-			if (
-				cavern.points.some((p) => p.x === roomCenter.x && p.y === roomCenter.y)
-			) {
-				return cavern;
-			}
-		}
+  /**
+   * Calculate how well rooms utilize available caverns
+   */
+  private calculateCavernUsage(rooms: RoomImpl[], caverns: Region[]): number {
+    const usedCaverns = new Set<number>();
 
-		return null;
-	}
+    for (const room of rooms) {
+      const cavern = this.findRoomCavern(room, caverns);
+      if (cavern) {
+        usedCaverns.add(cavern.id);
+      }
+    }
+
+    return usedCaverns.size / Math.max(caverns.length, 1);
+  }
+
+  /**
+   * Find which cavern contains a room
+   */
+  private findRoomCavern(room: RoomImpl, caverns: Region[]): Region | null {
+    const roomCenter = { x: room.centerX, y: room.centerY };
+
+    for (const cavern of caverns) {
+      if (
+        cavern.points.some((p) => p.x === roomCenter.x && p.y === roomCenter.y)
+      ) {
+        return cavern;
+      }
+    }
+
+    return null;
+  }
 }
