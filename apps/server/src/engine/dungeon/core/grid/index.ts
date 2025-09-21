@@ -25,3 +25,5 @@ export type {
   FloodFillConfig,
 } from "./types";
 export { CellType, DIRECTIONS_4, DIRECTIONS_8 } from "./types";
+
+

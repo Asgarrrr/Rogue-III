@@ -24,3 +24,5 @@ export {
   DEFAULT_CELLULAR_CONFIG,
   type CellularGeneratorConfig,
 } from "./cellular-generator";
+
+

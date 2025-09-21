@@ -9,10 +9,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@elysiajs/eden": "^1.4.1",
+    "@paper-design/shaders-react": "^0.0.54",
+    "@tailwindcss/vite": "^4.1.13",
+    "@tanstack/react-router": "^1.131.49",
+    "motion": "^12.23.15",
     "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "react-dom": "^19.1.1",
+    "tailwindcss": "^4.1.13"
   },
   "devDependencies": {
+    "@tanstack/router-plugin": "^1.131.49",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react-swc": "^4.0.0",
