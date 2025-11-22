@@ -19,6 +19,10 @@ const DEFAULT_CONFIG: Required<FloodFillConfig> = {
   diagonal: false,
 };
 
+// Numeric key encoding for O(1) hashing without string allocation
+// Supports grids up to 65535x65535
+const encodeKey = (x: number, y: number): number => (x << 16) | y;
+
 // Scanline flood fill - most efficient for large connected areas
 function scanlineFill(
   grid: Grid,
@@ -36,14 +40,14 @@ function scanlineFill(
     return points;
   }
 
-  const visited = new Set<string>();
+  const visited = new Set<number>();
   const stack: { x: number; y: number }[] = [{ x: startX, y: startY }];
 
   while (stack.length > 0 && points.length < cfg.maxSize) {
     const top = stack.pop();
     if (!top) break;
     const { x, y } = top;
-    const key = `${x},${y}`;
+    const key = encodeKey(x, y);
 
     if (
       visited.has(key) ||
@@ -61,7 +65,7 @@ function scanlineFill(
     while (
       leftX > 0 &&
       grid.getCell(leftX - 1, y) === cfg.targetValue &&
-      !visited.has(`${leftX - 1},${y}`)
+      !visited.has(encodeKey(leftX - 1, y))
     ) {
       leftX--;
     }
@@ -70,14 +74,14 @@ function scanlineFill(
     while (
       rightX < grid.width - 1 &&
       grid.getCell(rightX + 1, y) === cfg.targetValue &&
-      !visited.has(`${rightX + 1},${y}`)
+      !visited.has(encodeKey(rightX + 1, y))
     ) {
       rightX++;
     }
 
     // Fill the scanline and mark as visited
     for (let scanX = leftX; scanX <= rightX; scanX++) {
-      const scanKey = `${scanX},${y}`;
+      const scanKey = encodeKey(scanX, y);
       if (!visited.has(scanKey)) {
         visited.add(scanKey);
         points.push({ x: scanX, y });
@@ -92,7 +96,7 @@ function scanlineFill(
         for (let scanX = leftX; scanX <= rightX; scanX++) {
           if (
             grid.getCell(scanX, checkY) === cfg.targetValue &&
-            !visited.has(`${scanX},${checkY}`)
+            !visited.has(encodeKey(scanX, checkY))
           ) {
             stack.push({ x: scanX, y: checkY });
           }
@@ -121,14 +125,14 @@ function standardFill(
     return points;
   }
 
-  const visited = new Set<string>();
+  const visited = new Set<number>();
   const queue: Point[] = [{ x: startX, y: startY }];
   const directions = cfg.diagonal ? DIRECTIONS_8 : DIRECTIONS_4;
 
   let queueIndex = 0;
   while (queueIndex < queue.length && points.length < cfg.maxSize) {
     const current = queue[queueIndex++];
-    const key = `${current.x},${current.y}`;
+    const key = encodeKey(current.x, current.y);
 
     if (visited.has(key)) continue;
 
@@ -140,7 +144,7 @@ function standardFill(
     for (const dir of directions) {
       const nx = current.x + dir.x;
       const ny = current.y + dir.y;
-      const neighborKey = `${nx},${ny}`;
+      const neighborKey = encodeKey(nx, ny);
 
       if (
         !visited.has(neighborKey) &&

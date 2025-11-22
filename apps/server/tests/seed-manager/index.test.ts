@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SeedManager } from "../../src/engine/dungeon/serialization/seed-manager";
 import { testSeeds } from "./test-helpers";
-import { ZodError } from "zod";
 
 // Main integration tests that cover the complete seed manager workflow
 describe("Seed Manager - Complete Integration", () => {
@@ -12,14 +11,14 @@ describe("Seed Manager - Complete Integration", () => {
 			);
 
 			const encoded = SeedManager.encodeSeed(originalSeed);
-			if (encoded instanceof ZodError) throw new Error(encoded.message);
-			expect(typeof encoded).toBe("string");
-			expect(encoded.length).toBeGreaterThan(0);
+			if (encoded.isErr()) throw new Error(encoded.error.message);
+			expect(typeof encoded.value).toBe("string");
+			expect(encoded.value.length).toBeGreaterThan(0);
 
-			const decodedSeed = SeedManager.decodeSeed(encoded);
-			if (decodedSeed instanceof ZodError) throw new Error(decodedSeed.message);
+			const decodedSeed = SeedManager.decodeSeed(encoded.value);
+			if (decodedSeed.isErr()) throw new Error(decodedSeed.error.message);
 
-			expect(decodedSeed).toEqual(originalSeed);
+			expect(decodedSeed.value).toEqual(originalSeed);
 		});
 
 		test("should handle string input through full pipeline", () => {
@@ -29,12 +28,12 @@ describe("Seed Manager - Complete Integration", () => {
 			const seed = SeedManager.generateSeeds(normalized);
 
 			const encoded = SeedManager.encodeSeed(seed);
-			if (encoded instanceof ZodError) throw new Error(encoded.message);
+			if (encoded.isErr()) throw new Error(encoded.error.message);
 
-			const decoded = SeedManager.decodeSeed(encoded);
-			if (decoded instanceof ZodError) throw new Error(decoded.message);
+			const decoded = SeedManager.decodeSeed(encoded.value);
+			if (decoded.isErr()) throw new Error(decoded.error.message);
 
-			expect(decoded.primary).toBe(normalized);
+			expect(decoded.value.primary).toBe(normalized);
 		});
 
 		test("should maintain data integrity across multiple transformations", () => {
@@ -42,13 +41,13 @@ describe("Seed Manager - Complete Integration", () => {
 
 			for (let cycle = 0; cycle < 5; cycle++) {
 				const encoded = SeedManager.encodeSeed(currentSeed);
-				if (encoded instanceof ZodError) throw new Error(encoded.message);
+				if (encoded.isErr()) throw new Error(encoded.error.message);
 
-				const decoded = SeedManager.decodeSeed(encoded);
-				if (decoded instanceof ZodError) throw new Error(decoded.message);
+				const decoded = SeedManager.decodeSeed(encoded.value);
+				if (decoded.isErr()) throw new Error(decoded.error.message);
 
-				expect(decoded).toEqual(currentSeed);
-				currentSeed = decoded;
+				expect(decoded.value).toEqual(currentSeed);
+				currentSeed = decoded.value;
 			}
 		});
 
@@ -63,12 +62,12 @@ describe("Seed Manager - Complete Integration", () => {
 				const normalized = SeedManager.normalizeSeed(input);
 				const seed = SeedManager.generateSeeds(normalized);
 				const encoded = SeedManager.encodeSeed(seed);
-				if (encoded instanceof ZodError) throw new Error(encoded.message);
+				if (encoded.isErr()) throw new Error(encoded.error.message);
 
-				const decoded = SeedManager.decodeSeed(encoded);
-				if (decoded instanceof ZodError) throw new Error(decoded.message);
+				const decoded = SeedManager.decodeSeed(encoded.value);
+				if (decoded.isErr()) throw new Error(decoded.error.message);
 
-				expect(decoded.primary).toBe(normalized);
+				expect(decoded.value.primary).toBe(normalized);
 			}
 		});
 	});
@@ -81,12 +80,12 @@ describe("Seed Manager - Complete Integration", () => {
 			expect(seed1).toEqual(seed2);
 
 			const encoded = SeedManager.encodeSeed(seed1);
-			if (encoded instanceof ZodError) throw new Error(encoded.message);
+			if (encoded.isErr()) throw new Error(encoded.error.message);
 
-			const decoded = SeedManager.decodeSeed(encoded);
-			if (decoded instanceof ZodError) throw new Error(decoded.message);
+			const decoded = SeedManager.decodeSeed(encoded.value);
+			if (decoded.isErr()) throw new Error(decoded.error.message);
 
-			expect(decoded).toEqual(seed1);
+			expect(decoded.value).toEqual(seed1);
 		});
 
 		test("should handle edge cases gracefully throughout pipeline", () => {
@@ -97,12 +96,12 @@ describe("Seed Manager - Complete Integration", () => {
 				expect(() => {
 					const seed = SeedManager.generateSeeds(edgeCase);
 					const encoded = SeedManager.encodeSeed(seed);
-					if (encoded instanceof ZodError) throw new Error(encoded.message);
+					if (encoded.isErr()) throw new Error(encoded.error.message);
 
-					const decoded = SeedManager.decodeSeed(encoded);
-					if (decoded instanceof ZodError) throw new Error(decoded.message);
+					const decoded = SeedManager.decodeSeed(encoded.value);
+					if (decoded.isErr()) throw new Error(decoded.error.message);
 
-					expect(decoded).toEqual(seed);
+					expect(decoded.value).toEqual(seed);
 				}).not.toThrow();
 			}
 
@@ -110,7 +109,7 @@ describe("Seed Manager - Complete Integration", () => {
 				expect(() => {
 					const seed = SeedManager.generateSeeds(edgeCase);
 					const encoded = SeedManager.encodeSeed(seed);
-					if (encoded instanceof ZodError) {
+					if (encoded.isErr()) {
 						// Validation correctly rejects invalid seeds
 					} else {
 						expect(seed.layout).toBeGreaterThanOrEqual(0);
@@ -131,12 +130,12 @@ describe("Seed Manager - Complete Integration", () => {
 			expect(seed).toHaveProperty("timestamp");
 
 			const encoded = SeedManager.encodeSeed(seed);
-			if (encoded instanceof ZodError) throw new Error(encoded.message);
-			expect(typeof encoded).toBe("string");
+			if (encoded.isErr()) throw new Error(encoded.error.message);
+			expect(typeof encoded.value).toBe("string");
 
-			const decoded = SeedManager.decodeSeed(encoded);
-			if (decoded instanceof ZodError) throw new Error(decoded.message);
-			expect(decoded).toEqual(seed);
+			const decoded = SeedManager.decodeSeed(encoded.value);
+			if (decoded.isErr()) throw new Error(decoded.error.message);
+			expect(decoded.value).toEqual(seed);
 		});
 	});
 
@@ -148,10 +147,10 @@ describe("Seed Manager - Complete Integration", () => {
 			for (let i = 0; i < 100; i++) {
 				const seed = SeedManager.generateSeeds(i + 1); // Start from 1 since 0 is invalid
 				const encoded = SeedManager.encodeSeed(seed);
-				if (encoded instanceof ZodError) throw new Error(encoded.message);
+				if (encoded.isErr()) throw new Error(encoded.error.message);
 
-				const decoded = SeedManager.decodeSeed(encoded);
-				if (decoded instanceof ZodError) throw new Error(decoded.message);
+				const decoded = SeedManager.decodeSeed(encoded.value);
+				if (decoded.isErr()) throw new Error(decoded.error.message);
 			}
 
 			const endTime = Date.now();
@@ -168,19 +167,19 @@ describe("Seed Manager - Complete Integration", () => {
 				async (_, i) => {
 					const seed = SeedManager.generateSeeds(1000 + i);
 					const encoded = SeedManager.encodeSeed(seed);
-					if (encoded instanceof ZodError) throw new Error(encoded.message);
+					if (encoded.isErr()) throw new Error(encoded.error.message);
 
-					const decoded = SeedManager.decodeSeed(encoded);
-					if (decoded instanceof ZodError) throw new Error(decoded.message);
+					const decoded = SeedManager.decodeSeed(encoded.value);
+					if (decoded.isErr()) throw new Error(decoded.error.message);
 
-					return decoded;
+					return decoded.value;
 				}
 			);
 
 			const results = await Promise.all(promises);
 
 			for (const result of results) {
-				expect(result).not.toBeInstanceOf(ZodError);
+				expect(result).toHaveProperty("primary");
 			}
 		});
 	});
@@ -203,10 +202,10 @@ describe("Seed Manager - Complete Integration", () => {
 					if (typeof normalized === "number" && normalized > 0) {
 						const seed = SeedManager.generateSeeds(normalized);
 						const encoded = SeedManager.encodeSeed(seed);
-						if (encoded instanceof ZodError) throw new Error(encoded.message);
+						if (encoded.isErr()) throw new Error(encoded.error.message);
 
-						const decoded = SeedManager.decodeSeed(encoded);
-						if (decoded instanceof ZodError) throw new Error(decoded.message);
+						const decoded = SeedManager.decodeSeed(encoded.value);
+						if (decoded.isErr()) throw new Error(decoded.error.message);
 					}
 				}).not.toThrow();
 			}
@@ -221,19 +220,19 @@ describe("Seed Manager - Complete Integration", () => {
 					const seed = SeedManager.generateSeeds(randomValue);
 					const encoded = SeedManager.encodeSeed(seed);
 
-					if (encoded instanceof ZodError) {
+					if (encoded.isErr()) {
 						// This is acceptable - some inputs might produce validation errors
 						continue;
 					}
 
-					const decoded = SeedManager.decodeSeed(encoded);
+					const decoded = SeedManager.decodeSeed(encoded.value);
 
-					if (decoded instanceof ZodError) {
+					if (decoded.isErr()) {
 						// This is acceptable - some decodings might fail
 						continue;
 					}
 
-					expect(decoded.primary).toBe(seed.primary);
+					expect(decoded.value.primary).toBe(seed.primary);
 				} catch (error) {
 					// Log but don't fail - we're testing resilience
 					console.warn(`Iteration ${i} failed:`, error);

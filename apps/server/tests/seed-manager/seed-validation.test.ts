@@ -1,21 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { SeedManager } from "../../src/engine/dungeon/serialization/seed-manager";
 import { createMockSeed } from "./test-helpers";
-import { DungeonSeed } from "../../src/engine/dungeon/core/types/dungeon.types";
-import { ZodError } from "zod";
+import type { DungeonSeed } from "../../src/engine/dungeon/core/types/dungeon.types";
 
 describe("Seed Validation", () => {
 	describe("Schema validation", () => {
 		test("should accept valid seed format", () => {
 			const validSeed = createMockSeed();
 			const encoded = SeedManager.encodeSeed(validSeed);
-			if (encoded instanceof ZodError) throw new Error(encoded.message);
+			if (encoded.isErr()) throw new Error(encoded.error.message);
 
-			const decoded = SeedManager.decodeSeed(encoded);
+			const decoded = SeedManager.decodeSeed(encoded.value);
 
-			expect(decoded).not.toBeInstanceOf(ZodError);
-			if (decoded instanceof ZodError) throw new Error(decoded.message);
-			expect(decoded).toEqual(validSeed);
+			expect(decoded.isOk()).toBe(true);
+			if (decoded.isErr()) throw new Error(decoded.error.message);
+			expect(decoded.value).toEqual(validSeed);
 		});
 
 		test("should validate version format", () => {
@@ -25,11 +24,11 @@ describe("Seed Validation", () => {
 			for (const version of validVersions) {
 				const seed = createMockSeed({ version });
 				const encoded = SeedManager.encodeSeed(seed);
-				if (encoded instanceof ZodError) throw new Error(encoded.message);
+				if (encoded.isErr()) throw new Error(encoded.error.message);
 
-				const decoded = SeedManager.decodeSeed(encoded);
-				expect(decoded).not.toBeInstanceOf(ZodError);
-				if (decoded instanceof ZodError) throw new Error(decoded.message);
+				const decoded = SeedManager.decodeSeed(encoded.value);
+				expect(decoded.isOk()).toBe(true);
+				if (decoded.isErr()) throw new Error(decoded.error.message);
 			}
 		});
 
@@ -45,23 +44,23 @@ describe("Seed Validation", () => {
 			for (const timestamp of validTimestamps) {
 				const seed = createMockSeed({ timestamp });
 				const encoded = SeedManager.encodeSeed(seed);
-				if (encoded instanceof ZodError) throw new Error(encoded.message);
+				if (encoded.isErr()) throw new Error(encoded.error.message);
 
-				const decoded = SeedManager.decodeSeed(encoded);
+				const decoded = SeedManager.decodeSeed(encoded.value);
 
-				if (decoded instanceof ZodError) {
-					throw new Error(decoded.message);
+				if (decoded.isErr()) {
+					throw new Error(decoded.error.message);
 				}
 
-				expect(decoded).not.toBeNull();
-				expect(decoded.timestamp).toBe(timestamp);
+				expect(decoded.value).not.toBeNull();
+				expect(decoded.value.timestamp).toBe(timestamp);
 			}
 
 			// Test invalid timestamps (should fail validation)
 			for (const timestamp of invalidTimestamps) {
 				const seed = createMockSeed({ timestamp });
 				const encoded = SeedManager.encodeSeed(seed);
-				expect(encoded).toBeInstanceOf(ZodError); // Should fail at encoding step
+				expect(encoded.isErr()).toBe(true); // Should fail at encoding step
 			}
 		});
 	});
@@ -78,7 +77,7 @@ describe("Seed Validation", () => {
 
 			for (const invalidString of invalidEncodedStrings) {
 				const result = SeedManager.decodeSeed(invalidString);
-				expect(result).toBeInstanceOf(ZodError);
+				expect(result.isErr()).toBe(true);
 			}
 		});
 
@@ -95,7 +94,7 @@ describe("Seed Validation", () => {
 			for (const data of malformedData) {
 				// Manually call the internal functions that would be tested
 				const result = SeedManager.decodeSeed(data);
-				expect(result).toBeInstanceOf(ZodError);
+				expect(result.isErr()).toBe(true);
 			}
 		});
 
@@ -118,13 +117,13 @@ describe("Seed Validation", () => {
 			const operations = Array.from({ length: 100 }, async (_, i) => {
 				const seed = SeedManager.generateSeeds(1000 + i);
 				const encoded = SeedManager.encodeSeed(seed);
-				if (encoded instanceof ZodError) throw new Error(encoded.message);
+				if (encoded.isErr()) throw new Error(encoded.error.message);
 
-				const decoded = SeedManager.decodeSeed(encoded);
+				const decoded = SeedManager.decodeSeed(encoded.value);
 
-				if (decoded instanceof ZodError) throw new Error(decoded.message);
+				if (decoded.isErr()) throw new Error(decoded.error.message);
 
-				return decoded.primary === seed.primary;
+				return decoded.value.primary === seed.primary;
 			});
 
 			const results = await Promise.all(operations);
@@ -137,25 +136,25 @@ describe("Seed Validation", () => {
 		test("should detect corrupted encoded data", () => {
 			const originalSeed = createMockSeed();
 			const encoded = SeedManager.encodeSeed(originalSeed);
-			if (encoded instanceof ZodError) throw new Error(encoded.message);
+			if (encoded.isErr()) throw new Error(encoded.error.message);
 
 			// Corrupt the encoded string more significantly by replacing multiple characters
 			const corrupted =
-				encoded.substring(0, 5) + "XXXXX" + encoded.substring(10);
+				encoded.value.substring(0, 5) + "XXXXX" + encoded.value.substring(10);
 			const decoded = SeedManager.decodeSeed(corrupted);
 
-			expect(decoded).toBeInstanceOf(ZodError);
+			expect(decoded.isErr()).toBe(true);
 		});
 
 		test("should handle truncated encoded strings", () => {
 			const originalSeed = createMockSeed();
 			const encoded = SeedManager.encodeSeed(originalSeed);
-			if (encoded instanceof ZodError) throw new Error(encoded.message);
+			if (encoded.isErr()) throw new Error(encoded.error.message);
 
-			for (let i = 1; i < Math.min(encoded.length, 20); i++) {
-				const truncated = encoded.substring(0, i);
+			for (let i = 1; i < Math.min(encoded.value.length, 20); i++) {
+				const truncated = encoded.value.substring(0, i);
 				const decoded = SeedManager.decodeSeed(truncated);
-				expect(decoded).toBeInstanceOf(ZodError);
+				expect(decoded.isErr()).toBe(true);
 			}
 		});
 
@@ -171,12 +170,12 @@ describe("Seed Validation", () => {
 
 			for (const seed of extremeSeeds) {
 				const encoded = SeedManager.encodeSeed(seed);
-				if (encoded instanceof ZodError) throw new Error(encoded.message);
+				if (encoded.isErr()) throw new Error(encoded.error.message);
 
-				const decoded = SeedManager.decodeSeed(encoded);
-				expect(decoded).not.toBeInstanceOf(ZodError);
-				if (decoded instanceof ZodError) throw new Error(decoded.message);
-				expect(decoded).toEqual(seed);
+				const decoded = SeedManager.decodeSeed(encoded.value);
+				expect(decoded.isOk()).toBe(true);
+				if (decoded.isErr()) throw new Error(decoded.error.message);
+				expect(decoded.value).toEqual(seed);
 			}
 		});
 
@@ -193,22 +192,22 @@ describe("Seed Validation", () => {
 			};
 
 			const encoded = SeedManager.encodeSeed(largeSeed);
-			if (encoded instanceof ZodError) throw new Error(encoded.message);
+			if (encoded.isErr()) throw new Error(encoded.error.message);
 
-			const decoded = SeedManager.decodeSeed(encoded);
+			const decoded = SeedManager.decodeSeed(encoded.value);
 
-			if (decoded instanceof ZodError) {
-				throw new Error(decoded.message);
+			if (decoded.isErr()) {
+				throw new Error(decoded.error.message);
 			}
 
-			expect(decoded).not.toBeNull();
+			expect(decoded.value).not.toBeNull();
 			// Values should be preserved as integers
-			expect(decoded.primary).toBe(123456789);
-			expect(decoded.layout).toBe(456789012);
-			expect(decoded.rooms).toBe(1000000123);
-			expect(decoded.connections).toBe(2000000456);
-			expect(decoded.details).toBe(3000000789);
-			expect(decoded.timestamp).toBe(1640995200000);
+			expect(decoded.value.primary).toBe(123456789);
+			expect(decoded.value.layout).toBe(456789012);
+			expect(decoded.value.rooms).toBe(1000000123);
+			expect(decoded.value.connections).toBe(2000000456);
+			expect(decoded.value.details).toBe(3000000789);
+			expect(decoded.value.timestamp).toBe(1640995200000);
 		});
 	});
 
@@ -225,13 +224,13 @@ describe("Seed Validation", () => {
 			});
 
 			const encoded = SeedManager.encodeSeed(largeSeed);
-			if (encoded instanceof ZodError) throw new Error(encoded.message);
+			if (encoded.isErr()) throw new Error(encoded.error.message);
 
-			const decoded = SeedManager.decodeSeed(encoded);
+			const decoded = SeedManager.decodeSeed(encoded.value);
 
-			expect(decoded).not.toBeInstanceOf(ZodError);
-			if (decoded instanceof ZodError) throw new Error(decoded.message);
-			expect(decoded).toEqual(largeSeed);
+			expect(decoded.isOk()).toBe(true);
+			if (decoded.isErr()) throw new Error(decoded.error.message);
+			expect(decoded.value).toEqual(largeSeed);
 		});
 
 		test("should handle rapid successive operations", () => {
@@ -240,16 +239,16 @@ describe("Seed Validation", () => {
 			for (let i = 0; i < iterations; i++) {
 				const seed = SeedManager.generateSeeds(i + 1); // Start from 1 to avoid negative values
 				const encoded = SeedManager.encodeSeed(seed);
-				if (encoded instanceof ZodError) throw new Error(encoded.message);
+				if (encoded.isErr()) throw new Error(encoded.error.message);
 
-				const decoded = SeedManager.decodeSeed(encoded);
+				const decoded = SeedManager.decodeSeed(encoded.value);
 
-				if (decoded instanceof ZodError) {
-					throw new Error(decoded.message);
+				if (decoded.isErr()) {
+					throw new Error(decoded.error.message);
 				}
 
-				expect(decoded).not.toBeNull();
-				expect(decoded.primary).toBe(i + 1);
+				expect(decoded.value).not.toBeNull();
+				expect(decoded.value.primary).toBe(i + 1);
 			}
 		});
 	});

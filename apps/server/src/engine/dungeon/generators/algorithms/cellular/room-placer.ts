@@ -388,9 +388,6 @@ export class RoomPlacer {
 
     // Early termination if placement is already good
     if (roomRatio >= 0.8 && bestScore > rooms.length * 15) {
-      console.log(
-        `⚡ Skipping optimization - placement already good (score: ${bestScore})`,
-      );
       return bestRooms;
     }
 
@@ -440,9 +437,6 @@ export class RoomPlacer {
 
       // Early termination if we reach a good score
       if (bestScore > rooms.length * 20) {
-        console.log(
-          `⚡ Early termination at iteration ${iteration} (score: ${bestScore})`,
-        );
         break;
       }
     }

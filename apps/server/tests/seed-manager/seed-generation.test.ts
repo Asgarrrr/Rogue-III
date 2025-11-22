@@ -34,8 +34,8 @@ describe("Seed Generation", () => {
 			const seed2 = SeedManager.generateSeeds(testSeeds.validNumericSeed);
 
 			expect(seed1.layout).toBe(seed2.layout);
-			expect(seed1.layout).toBe(
-				Math.abs(testSeeds.validNumericSeed ^ 0x9e3779b9)
+			expect(seed1.layout >>> 0).toBe(
+				(testSeeds.validNumericSeed ^ 0x9e3779b9) >>> 0
 			);
 		});
 
@@ -59,16 +59,25 @@ describe("Seed Generation", () => {
 
 		test("should use custom version when provided", () => {
 			const customVersion = "2.1.0";
-			const seed = SeedManager.generateSeeds(
-				testSeeds.validNumericSeed,
-				customVersion
-			);
+			const seed = SeedManager.generateSeeds(testSeeds.validNumericSeed, {
+				version: customVersion,
+			});
 			expect(seed.version).toBe(customVersion);
 		});
 
-		test("should generate recent timestamp", () => {
+		test("should produce deterministic timestamp by default", () => {
+			const seed1 = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+			const seed2 = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+
+			expect(seed1.timestamp).toBe(seed2.timestamp);
+			expect(seed1.timestamp).toBeGreaterThan(0);
+		});
+
+		test("can opt into real-time timestamp for observability", () => {
 			const before = Date.now();
-			const seed = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+			const seed = SeedManager.generateSeeds(testSeeds.validNumericSeed, {
+				deterministicTimestamp: false,
+			});
 			const after = Date.now();
 
 			expect(seed.timestamp).toBeGreaterThanOrEqual(before);

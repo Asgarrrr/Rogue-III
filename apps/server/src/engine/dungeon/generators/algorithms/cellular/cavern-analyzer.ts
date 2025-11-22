@@ -166,11 +166,20 @@ export class CavernAnalyzer {
     const elongated: Region[] = [];
     const compact: Region[] = [];
 
+    // Size thresholds based on typical dungeon room requirements:
+    // - Large (>500 cells): Can fit multiple rooms, ideal for main chambers
+    // - Medium (100-500 cells): Good for single rooms with features
+    // - Small (<100 cells): May be too cramped for gameplay
+    // Aspect ratio threshold (2.5): Corridors vs chambers - higher = more corridor-like
+    const SIZE_THRESHOLD_LARGE = 500;
+    const SIZE_THRESHOLD_MEDIUM = 100;
+    const ASPECT_RATIO_ELONGATED = 2.5;
+
     for (const cavern of caverns) {
       // Size classification
-      if (cavern.size > 500) {
+      if (cavern.size > SIZE_THRESHOLD_LARGE) {
         large.push(cavern);
-      } else if (cavern.size > 100) {
+      } else if (cavern.size > SIZE_THRESHOLD_MEDIUM) {
         medium.push(cavern);
       } else {
         small.push(cavern);
@@ -178,7 +187,7 @@ export class CavernAnalyzer {
 
       // Shape classification
       const aspectRatio = this.calculateAspectRatio(cavern);
-      if (aspectRatio > 2.5) {
+      if (aspectRatio > ASPECT_RATIO_ELONGATED) {
         elongated.push(cavern);
       } else {
         compact.push(cavern);

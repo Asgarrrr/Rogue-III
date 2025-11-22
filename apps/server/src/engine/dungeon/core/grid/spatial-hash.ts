@@ -3,10 +3,11 @@ import type { Bounds, Point } from "./types";
 /**
  * Spatial hash for fast 2D spatial queries.
  * Divides space into uniform grid cells and maps objects to cells for O(1) average lookup.
+ * Uses numeric keys for optimal performance (no string allocation).
  */
 export class SpatialHash<T> {
   private readonly cellSize: number;
-  private readonly cells: Map<string, T[]>;
+  private readonly cells: Map<number, T[]>;
   private bounds: Bounds;
 
   constructor(cellSize: number, bounds: Bounds) {
@@ -23,12 +24,21 @@ export class SpatialHash<T> {
   }
 
   /**
+   * Encode cell coordinates as a single number for O(1) hashing
+   * Supports cell coordinates up to ±32767
+   */
+  private encodeCellKey(cellX: number, cellY: number): number {
+    // Add offset to handle negative coordinates
+    return ((cellX + 32768) << 16) | (cellY + 32768);
+  }
+
+  /**
    * Convert world coordinates to cell key
    */
-  private getCellKey(x: number, y: number): string {
+  private getCellKey(x: number, y: number): number {
     const cellX = Math.floor(x / this.cellSize);
     const cellY = Math.floor(y / this.cellSize);
-    return `${cellX},${cellY}`;
+    return this.encodeCellKey(cellX, cellY);
   }
 
   /**
@@ -39,8 +49,8 @@ export class SpatialHash<T> {
     y: number,
     width: number,
     height: number,
-  ): string[] {
-    const keys: string[] = [];
+  ): number[] {
+    const keys: number[] = [];
     const startCellX = Math.floor(x / this.cellSize);
     const startCellY = Math.floor(y / this.cellSize);
     const endCellX = Math.floor((x + width - 1) / this.cellSize);
@@ -48,7 +58,7 @@ export class SpatialHash<T> {
 
     for (let cellY = startCellY; cellY <= endCellY; cellY++) {
       for (let cellX = startCellX; cellX <= endCellX; cellX++) {
-        keys.push(`${cellX},${cellY}`);
+        keys.push(this.encodeCellKey(cellX, cellY));
       }
     }
 

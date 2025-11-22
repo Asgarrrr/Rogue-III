@@ -1,4 +1,4 @@
-import { Room } from "../core/types";
+import type { Room } from "../core/types";
 
 export class RoomImpl implements Room {
   id: number;

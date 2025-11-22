@@ -1,6 +1,6 @@
 import { SeededRandom } from "../../core/random/seeded-random";
-import { DungeonConfig, DungeonSeed } from "../../core/types";
-import { Dungeon } from "../../entities";
+import type { DungeonConfig, DungeonSeed } from "../../core/types";
+import type { Dungeon } from "../../entities";
 
 /**
  * Abstract base class for all dungeon generators.
@@ -22,10 +22,10 @@ export abstract class DungeonGenerator {
   protected readonly detailsRng: SeededRandom;
 
   private readonly initialStates: {
-    layout: [number, number, number, number];
-    rooms: [number, number, number, number];
-    connections: [number, number, number, number];
-    details: [number, number, number, number];
+    layout: [bigint, bigint];
+    rooms: [bigint, bigint];
+    connections: [bigint, bigint];
+    details: [bigint, bigint];
   };
 
   constructor(config: DungeonConfig, seeds: DungeonSeed) {

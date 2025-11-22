@@ -111,13 +111,6 @@ export class CellularGenerator extends DungeonGenerator {
    * Generate dungeon synchronously
    */
   generate(): DungeonImpl {
-    console.log(
-      `🔄 Generating cellular dungeon (${this.config.width}x${this.config.height})`,
-    );
-    console.log(`📊 Seeds: L=${this.seeds.layout}, R=${this.seeds.rooms}`);
-
-    const startTime = performance.now();
-
     const { grid, rooms, connections } = this.runPipeline();
     const safeRooms = Array.isArray(rooms) ? rooms : [];
     const safeConnections = Array.isArray(connections) ? connections : [];
@@ -132,9 +125,6 @@ export class CellularGenerator extends DungeonGenerator {
       grid: grid.toBooleanGrid(),
     });
 
-    const totalTime = performance.now() - startTime;
-    console.log(`🎉 Cellular dungeon generated in ${totalTime.toFixed(2)}ms`);
-
     return dungeon;
   }
 
@@ -144,11 +134,6 @@ export class CellularGenerator extends DungeonGenerator {
   async generateAsync(
     onProgress?: (progress: number) => void,
   ): Promise<DungeonImpl> {
-    console.log(
-      `🔄 Generating cellular dungeon asynchronously (${this.config.width}x${this.config.height})`,
-    );
-
-    const startTime = performance.now();
     let currentProgress = 0;
 
     const updateProgress = (increment: number) => {
@@ -161,43 +146,26 @@ export class CellularGenerator extends DungeonGenerator {
 
     // Phase 1: Generate and evolve cellular grid (30%)
     const grid = this.generateCellularGrid();
-    console.log(`✅ Grid generated (${performance.now() - startTime}ms)`);
     updateProgress(30);
     await this.yield();
 
     // Phase 2: Analyze cavern structure (25%)
     const caverns = this.analyzeCaverns(grid);
-    console.log(
-      `✅ Found ${caverns.length} caverns (${performance.now() - startTime}ms)`,
-    );
     updateProgress(25);
     await this.yield();
 
     // Phase 3: Place rooms in suitable caverns (25%)
     const rooms = this.placeRooms(caverns, grid);
-    console.log(
-      `✅ Placed ${rooms.length} rooms (${performance.now() - startTime}ms)`,
-    );
     updateProgress(25);
     await this.yield();
 
     // Phase 4: Create connections between rooms (15%)
     const connections = this.createConnections(rooms, grid);
-    console.log(
-      `✅ Created ${connections.length} connections (${
-        performance.now() - startTime
-      }ms)`,
-    );
     updateProgress(10);
     await this.yield();
 
     // Phase 4.5: Carve rooms and paths into the grid for navigation (5%)
     this.integrateRoomsAndPathsIntoGrid(rooms, connections, grid);
-    console.log(
-      `✅ Integrated rooms and paths into grid (${
-        performance.now() - startTime
-      }ms)`,
-    );
     updateProgress(5);
     await this.yield();
 
@@ -212,13 +180,6 @@ export class CellularGenerator extends DungeonGenerator {
       grid: grid.toBooleanGrid(),
     });
     updateProgress(5);
-
-    const totalTime = performance.now() - startTime;
-    console.log(
-      `🎉 Cellular dungeon generated asynchronously in ${totalTime.toFixed(
-        2,
-      )}ms`,
-    );
 
     return dungeon;
   }
@@ -443,15 +404,6 @@ export class CellularGenerator extends DungeonGenerator {
       this.cellularConfig.rooms.minRoomSize,
     );
 
-    // Generate statistics for debugging
-    const stats = this.cavernAnalyzer.generateCavernStatistics(caverns);
-    console.log(`📈 Cavern stats:`, {
-      total: stats.totalCaverns,
-      suitable: suitableCaverns.length,
-      avgSize: Math.round(stats.averageCavernSize),
-      largest: stats.largestCavernSize,
-    });
-
     return suitableCaverns as Region[];
   }
 
@@ -466,7 +418,6 @@ export class CellularGenerator extends DungeonGenerator {
       rooms.length > 0 &&
       rooms.length < this.cellularConfig.rooms.roomCount
     ) {
-      console.log(`🔧 Optimizing room placement...`);
       return this.roomPlacer.optimizeRoomPlacement(rooms, caverns, grid);
     }
 

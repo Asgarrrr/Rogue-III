@@ -3,7 +3,7 @@ import {
   type ValidatedDungeonConfig,
 } from "../schemas/dungeon";
 import type { DungeonConfig } from "../types/dungeon";
-import type { Result } from "../types/result";
+import { Result, Ok, Err } from "../types/result";
 
 export type BuildConfigInput = Partial<DungeonConfig> & {
   algorithm?: "cellular" | "bsp";
@@ -65,6 +65,6 @@ export function buildDungeonConfig(
   } as DungeonConfig;
 
   const parsed = DungeonConfigSchema.safeParse(candidate);
-  if (!parsed.success) return { success: false, error: parsed.error };
-  return { success: true, value: parsed.data };
+  if (!parsed.success) return Err(parsed.error);
+  return Ok(parsed.data);
 }
