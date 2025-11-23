@@ -169,6 +169,7 @@ function findRegions(
   const regions: Region[] = [];
   const width = grid.width;
   const height = grid.height;
+  const data = grid.getRawData();
   const visited = new Uint8Array(width * height);
   const directions = diagonal ? DIRECTIONS_8 : DIRECTIONS_4;
   const qx = new Int32Array(width * height);
@@ -180,7 +181,7 @@ function findRegions(
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = idx(x, y);
-      if (visited[i] || grid.getCell(x, y) !== targetType) continue;
+      if (visited[i] || data[i] !== targetType) continue;
 
       let head = 0,
         tail = 0;
@@ -215,7 +216,7 @@ function findRegions(
             ny >= 0 &&
             ny < height &&
             !visited[idx(nx, ny)] &&
-            grid.getCell(nx, ny) === targetType
+            data[idx(nx, ny)] === targetType
           ) {
             qx[tail] = nx;
             qy[tail] = ny;
