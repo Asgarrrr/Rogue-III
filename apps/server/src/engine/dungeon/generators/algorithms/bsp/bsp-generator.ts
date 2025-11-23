@@ -18,12 +18,12 @@ import type { DungeonConfig, DungeonSeed } from "../../../core/types";
 import type { ConnectionImpl } from "../../../entities/connection";
 import { DungeonImpl } from "../../../entities/dungeon";
 import type { RoomImpl } from "../../../entities/room";
-import { DungeonGenerator } from "../../base/dungeon-generator";
-import type { PipelineStep } from "../../pipeline";
 import {
   getInvariantSummary,
   validateDungeonInvariants,
 } from "../../../validation";
+import { DungeonGenerator } from "../../base/dungeon-generator";
+import type { PipelineStep } from "../../pipeline";
 
 import {
   type BspGeneratorConfig,
