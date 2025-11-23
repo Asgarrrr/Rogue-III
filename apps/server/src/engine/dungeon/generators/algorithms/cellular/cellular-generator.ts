@@ -1,3 +1,4 @@
+import { DungeonError } from "@rogue/contracts";
 import { CellType, type Grid, type Region } from "../../../core/grid";
 import type { DungeonConfig, DungeonSeed } from "../../../core/types";
 import {
@@ -5,6 +6,10 @@ import {
   DungeonImpl,
   type RoomImpl,
 } from "../../../entities";
+import {
+  getInvariantSummary,
+  validateDungeonInvariants,
+} from "../../../validation";
 import { DungeonGenerator } from "../../base/dungeon-generator";
 import {
   type GenContext,
@@ -125,6 +130,17 @@ export class CellularGenerator extends DungeonGenerator {
       grid: grid.toBooleanGrid(),
     });
 
+    const validation = validateDungeonInvariants(dungeon);
+    if (!validation.valid) {
+      throw DungeonError.generationFailed(
+        "Dungeon failed invariant validation",
+        {
+          violations: validation.violations,
+          summary: getInvariantSummary(validation),
+        },
+      );
+    }
+
     return dungeon;
   }
 
@@ -187,6 +203,18 @@ export class CellularGenerator extends DungeonGenerator {
       grid: grid.toBooleanGrid(),
     });
     updateProgress(5);
+
+    const validation = validateDungeonInvariants(dungeon);
+    if (!validation.valid) {
+      throw DungeonError.generationFailed(
+        "Dungeon failed invariant validation",
+        {
+          violations: validation.violations,
+          summary: getInvariantSummary(validation),
+        },
+      );
+    }
+
     this.throwIfAborted(signal);
 
     return dungeon;

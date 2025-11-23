@@ -12,6 +12,7 @@ import type { DungeonGenerator } from "./generators/base/dungeon-generator";
 import { createGeneratorFromRegistry } from "./generators/registry";
 import { DungeonConfigSchema } from "./schema/dungeon";
 import { SeedManager } from "./serialization";
+import { getInvariantSummary, validateDungeonInvariants } from "./validation";
 
 const DEFAULT_GENERATION_TIMEOUT_MS = 10_000;
 
@@ -134,6 +135,21 @@ async function withGenerationTimeout<T>(
   });
 }
 
+function validateDungeonOutput(
+  dungeon: Dungeon,
+): Result<Dungeon, DungeonError> {
+  const validation = validateDungeonInvariants(dungeon);
+  if (!validation.valid) {
+    return Err(
+      DungeonError.generationFailed("Dungeon failed invariant validation", {
+        violations: validation.violations,
+        summary: getInvariantSummary(validation),
+      }),
+    );
+  }
+  return Ok(dungeon);
+}
+
 /**
  * Generate a dungeon asynchronously with progress tracking.
  */
@@ -183,7 +199,7 @@ async function generateFromSeedAsync(
       options?.timeoutMs ?? DEFAULT_GENERATION_TIMEOUT_MS,
       options?.signal,
     );
-    return Ok(dungeon);
+    return validateDungeonOutput(dungeon);
   } catch (error) {
     if (DungeonError.isDungeonError(error)) {
       return Err(error);
@@ -229,7 +245,8 @@ function generateFromSeedSync(
       guardrailsResult.value,
       seedsResult.value,
     );
-    return Ok(generator.generate());
+    const dungeon = generator.generate();
+    return validateDungeonOutput(dungeon);
   } catch (error) {
     if (DungeonError.isDungeonError(error)) {
       return Err(error);
@@ -270,12 +287,12 @@ function regenerateFromCode(
   }
 
   try {
-    return Ok(
-      createGeneratorFromRegistry(
-        guardrailsResult.value,
-        seedsResult.value,
-      ).generate(),
-    );
+    const dungeon = createGeneratorFromRegistry(
+      guardrailsResult.value,
+      seedsResult.value,
+    ).generate();
+
+    return validateDungeonOutput(dungeon);
   } catch (error) {
     if (DungeonError.isDungeonError(error)) {
       return Err(error);

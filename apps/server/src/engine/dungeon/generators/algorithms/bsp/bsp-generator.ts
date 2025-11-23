@@ -12,11 +12,16 @@
  * - Async generation with progress tracking
  */
 
-import { CellType, Grid } from "../../../core/grid";
+import { DungeonError } from "@rogue/contracts";
+import { CellType, type Grid, GridFactory } from "../../../core/grid";
 import type { DungeonConfig, DungeonSeed } from "../../../core/types";
 import type { ConnectionImpl } from "../../../entities/connection";
 import { DungeonImpl } from "../../../entities/dungeon";
 import type { RoomImpl } from "../../../entities/room";
+import {
+  getInvariantSummary,
+  validateDungeonInvariants,
+} from "../../../validation";
 import { DungeonGenerator } from "../../base/dungeon-generator";
 import type { PipelineStep } from "../../pipeline";
 
@@ -66,10 +71,16 @@ export class BSPGenerator extends DungeonGenerator {
    */
   generate(): DungeonImpl {
     // Create initial grid filled with walls
-    const grid = new Grid(
+    const gridResult = GridFactory.create(
       { width: this.config.width, height: this.config.height },
       CellType.WALL,
     );
+
+    if (gridResult.isErr()) {
+      throw gridResult.error;
+    }
+
+    const grid = gridResult.value;
 
     // Phase 1: Partition space
     const bspTree = this.partitioner.partition(
@@ -96,7 +107,7 @@ export class BSPGenerator extends DungeonGenerator {
     // Calculate checksum for determinism validation
     const checksum = this.calculateChecksum(rooms, connections);
 
-    return new DungeonImpl({
+    const dungeon = new DungeonImpl({
       rooms,
       connections,
       config: this.config,
@@ -104,6 +115,19 @@ export class BSPGenerator extends DungeonGenerator {
       checksum,
       grid: grid.toBooleanGrid(),
     });
+
+    const validation = validateDungeonInvariants(dungeon);
+    if (!validation.valid) {
+      throw DungeonError.generationFailed(
+        "Dungeon failed invariant validation",
+        {
+          violations: validation.violations,
+          summary: getInvariantSummary(validation),
+        },
+      );
+    }
+
+    return dungeon;
   }
 
   /**
@@ -121,10 +145,16 @@ export class BSPGenerator extends DungeonGenerator {
     this.throwIfAborted(signal);
 
     // Create initial grid filled with walls
-    const grid = new Grid(
+    const gridResult = GridFactory.create(
       { width: this.config.width, height: this.config.height },
       CellType.WALL,
     );
+
+    if (gridResult.isErr()) {
+      throw gridResult.error;
+    }
+
+    const grid = gridResult.value;
     updateProgress(5);
     await this.yield(signal);
 
@@ -166,7 +196,7 @@ export class BSPGenerator extends DungeonGenerator {
     this.throwIfAborted(signal);
     updateProgress(100);
 
-    return new DungeonImpl({
+    const dungeon = new DungeonImpl({
       rooms,
       connections,
       config: this.config,
@@ -174,6 +204,19 @@ export class BSPGenerator extends DungeonGenerator {
       checksum,
       grid: grid.toBooleanGrid(),
     });
+
+    const validation = validateDungeonInvariants(dungeon);
+    if (!validation.valid) {
+      throw DungeonError.generationFailed(
+        "Dungeon failed invariant validation",
+        {
+          violations: validation.violations,
+          summary: getInvariantSummary(validation),
+        },
+      );
+    }
+
+    return dungeon;
   }
 
   /**
@@ -187,11 +230,16 @@ export class BSPGenerator extends DungeonGenerator {
       id: "bsp.partition",
       io: { reads: [], writes: ["bsp.tree", "bsp.leaves", "bsp.siblings"] },
       run: (ctx) => {
-        const grid = new Grid(
+        const gridResult = GridFactory.create(
           { width: this.config.width, height: this.config.height },
           CellType.WALL,
         );
-        ctx.grid.base = grid;
+
+        if (gridResult.isErr()) {
+          throw gridResult.error;
+        }
+
+        ctx.grid.base = gridResult.value;
 
         const tree = this.partitioner.partition(
           this.config.width,

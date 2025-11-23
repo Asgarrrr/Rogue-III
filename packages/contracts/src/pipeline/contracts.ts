@@ -57,6 +57,14 @@ export const PipelineSnapshotSchema = z.discriminatedUnion("kind", [
 export const ProgressEventSchema = z.object({
   stepId: z.string(),
   progress: z.number().min(0).max(100),
+  /** Zero-based index of the step within the pipeline (optional). */
+  stepIndex: z.number().int().nonnegative().optional(),
+  /** Total number of steps in the pipeline (optional). */
+  totalSteps: z.number().int().positive().optional(),
+  /** Duration of the step in milliseconds (optional). */
+  durationMs: z.number().nonnegative().optional(),
+  /** Elapsed time since pipeline start in milliseconds (optional). */
+  elapsedMs: z.number().nonnegative().optional(),
 });
 
 export type PipelineSnapshot = z.infer<typeof PipelineSnapshotSchema>;
