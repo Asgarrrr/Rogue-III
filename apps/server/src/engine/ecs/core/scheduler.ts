@@ -3,7 +3,7 @@ import type { AnyComponentType, EmptyResources, SystemPhase } from "./types";
 type AnySystem = System<
   readonly AnyComponentType[],
   readonly AnyComponentType[],
-  any
+  Record<string, unknown>
 >;
 
 export interface SystemContext<

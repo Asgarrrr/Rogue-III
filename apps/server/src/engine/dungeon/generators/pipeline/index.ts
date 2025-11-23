@@ -1,9 +1,9 @@
+import { performance } from "node:perf_hooks";
 import {
   type PipelineSnapshot,
   type ProgressEvent,
   ProgressEventSchema,
 } from "@rogue/contracts";
-import { performance } from "node:perf_hooks";
 import type { Grid, Region } from "../../core/grid";
 import type { DungeonConfig } from "../../core/types";
 import type { ConnectionImpl } from "../../entities/connection";
