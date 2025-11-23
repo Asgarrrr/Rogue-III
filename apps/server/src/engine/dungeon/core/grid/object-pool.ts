@@ -1,12 +1,43 @@
 /**
+ * Pool statistics for monitoring and optimization.
+ */
+export interface PoolStats {
+  /** Current number of objects in the pool */
+  readonly poolSize: number;
+  /** Maximum pool capacity */
+  readonly maxSize: number;
+  /** Total number of acquire operations */
+  readonly acquireCount: number;
+  /** Total number of release operations */
+  readonly releaseCount: number;
+  /** Number of times a new object was created (cache miss) */
+  readonly createCount: number;
+  /** Number of times an object was reused (cache hit) */
+  readonly reuseCount: number;
+  /** Cache hit rate (0-1) */
+  readonly hitRate: number;
+  /** Number of objects dropped due to pool being full */
+  readonly droppedCount: number;
+}
+
+/**
  * Generic object pool for reducing garbage collection pressure.
  * Reuses objects instead of creating new ones repeatedly.
+ *
+ * Includes comprehensive metrics for monitoring pool efficiency.
  */
 export class ObjectPool<T> {
   private readonly factory: () => T;
   private readonly reset: (obj: T) => void;
   private readonly pool: T[] = [];
   private readonly maxSize: number;
+
+  // Metrics tracking
+  private _acquireCount = 0;
+  private _releaseCount = 0;
+  private _createCount = 0;
+  private _reuseCount = 0;
+  private _droppedCount = 0;
 
   constructor(
     factory: () => T,
@@ -19,13 +50,48 @@ export class ObjectPool<T> {
   }
 
   /**
+   * Get comprehensive pool statistics.
+   */
+  getStats(): PoolStats {
+    const totalRequests = this._reuseCount + this._createCount;
+    return {
+      poolSize: this.pool.length,
+      maxSize: this.maxSize,
+      acquireCount: this._acquireCount,
+      releaseCount: this._releaseCount,
+      createCount: this._createCount,
+      reuseCount: this._reuseCount,
+      hitRate: totalRequests > 0 ? this._reuseCount / totalRequests : 0,
+      droppedCount: this._droppedCount,
+    };
+  }
+
+  /**
+   * Reset all metrics to zero.
+   */
+  resetStats(): void {
+    this._acquireCount = 0;
+    this._releaseCount = 0;
+    this._createCount = 0;
+    this._reuseCount = 0;
+    this._droppedCount = 0;
+  }
+
+  /**
    * Get an object from the pool or create a new one
    */
   acquire(): T {
+    this._acquireCount++;
+
     if (this.pool.length > 0) {
       const obj = this.pool.pop();
-      if (obj !== undefined) return obj;
+      if (obj !== undefined) {
+        this._reuseCount++;
+        return obj;
+      }
     }
+
+    this._createCount++;
     return this.factory();
   }
 
@@ -33,9 +99,13 @@ export class ObjectPool<T> {
    * Return an object to the pool for reuse
    */
   release(obj: T): void {
+    this._releaseCount++;
+
     if (this.pool.length < this.maxSize) {
       this.reset(obj);
       this.pool.push(obj);
+    } else {
+      this._droppedCount++;
     }
   }
 
@@ -89,6 +159,12 @@ export const PointPool = {
   preFill(count: number = 1000): void {
     pointPool.preFill(count);
   },
+  getStats(): PoolStats {
+    return pointPool.getStats();
+  },
+  resetStats(): void {
+    pointPool.resetStats();
+  },
 } as const;
 
 const arrayPools = new Map<number, ObjectPool<unknown[]>>();
@@ -136,4 +212,20 @@ export const CoordinateSetPool = {
   release(set: Set<string>): void {
     coordinateSetPool.release(set);
   },
+  getStats(): PoolStats {
+    return coordinateSetPool.getStats();
+  },
+  resetStats(): void {
+    coordinateSetPool.resetStats();
+  },
 } as const;
+
+/**
+ * Get aggregated stats from all pools for monitoring.
+ */
+export function getAllPoolStats(): Record<string, PoolStats> {
+  return {
+    point: pointPool.getStats(),
+    coordinateSet: coordinateSetPool.getStats(),
+  };
+}

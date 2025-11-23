@@ -8,6 +8,14 @@ import type { SeededRandom } from "../../../core/random/seeded-random";
 import { RoomImpl } from "../../../entities/room";
 
 /**
+ * Encode x,y coordinates into a single number for efficient Set storage.
+ * Uses row-major indexing to avoid string allocation and bit-width collisions.
+ */
+function encodeCoord(x: number, y: number, width: number): number {
+  return y * width + x;
+}
+
+/**
  * Configuration for room placement
  */
 export interface RoomPlacementConfig {
@@ -66,17 +74,19 @@ export class RoomPlacer {
       maxX: grid.width,
       maxY: grid.height,
     });
+    const coordWidth = grid.width;
     const rooms: RoomImpl[] = [];
 
     // Sort caverns by size (largest first) for better room placement
     const sortedCaverns = [...caverns].sort((a, b) => b.size - a.size);
 
-    // Pre-compute cavern point maps for faster lookup
-    const cavernMaps = new Map<number, Set<string>>();
+    // Pre-compute cavern point maps for faster lookup using numeric encoding
+    // This avoids string allocation overhead for each coordinate
+    const cavernMaps = new Map<number, Set<number>>();
     for (const cavern of sortedCaverns) {
       cavernMaps.set(
         cavern.id,
-        new Set(cavern.points.map((p) => `${p.x},${p.y}`)),
+        new Set(cavern.points.map((p) => encodeCoord(p.x, p.y, coordWidth))),
       );
     }
 
@@ -131,7 +141,7 @@ export class RoomPlacer {
     grid: Grid,
     startRoomId: number,
     existingRoomCount: number,
-    cavernPointMap: Set<string>,
+    cavernPointMap: Set<number>,
   ): RoomImpl[] {
     const rooms: RoomImpl[] = [];
     const remainingRooms = this.config.roomCount - existingRoomCount;
@@ -171,7 +181,7 @@ export class RoomPlacer {
     grid: Grid,
     roomId: number,
     existingRooms: RoomImpl[],
-    cavernPointMap: Set<string>,
+    cavernPointMap: Set<number>,
   ): RoomImpl | null {
     const bounds = cavern.bounds;
     const cavernWidth = bounds.maxX - bounds.minX + 1;
@@ -249,7 +259,7 @@ export class RoomPlacer {
     height: number,
     grid: Grid,
     existingRooms: RoomImpl[],
-    cavernPointMap: Set<string>,
+    cavernPointMap: Set<number>,
   ): boolean {
     // Check bounds
     if (
@@ -294,6 +304,7 @@ export class RoomPlacer {
 
   /**
    * Check if room is sufficiently within cavern floor area (optimized version)
+   * Uses numeric coordinate encoding for better performance.
    */
   private isRoomInCavernOptimized(
     x: number,
@@ -301,15 +312,17 @@ export class RoomPlacer {
     width: number,
     height: number,
     grid: Grid,
-    cavernPointMap: Set<string>,
+    cavernPointMap: Set<number>,
   ): boolean {
     let floorCells = 0;
     const totalCells = width * height;
+    const coordWidth = grid.width;
 
     for (let ry = y; ry < y + height; ry++) {
       for (let rx = x; rx < x + width; rx++) {
+        // Use numeric encoding instead of string concatenation
         if (
-          cavernPointMap.has(`${rx},${ry}`) &&
+          cavernPointMap.has(encodeCoord(rx, ry, coordWidth)) &&
           grid.getCell(rx, ry) === CellType.FLOOR
         ) {
           floorCells++;
@@ -400,8 +413,10 @@ export class RoomPlacer {
       const cavern = this.findRoomCavern(originalRoom, caverns);
       if (!cavern) continue;
 
-      // Create pre-computed cavern map for this iteration
-      const cavernPointMap = new Set(cavern.points.map((p) => `${p.x},${p.y}`));
+      // Create pre-computed cavern map for this iteration using numeric encoding
+      const cavernPointMap = new Set(
+        cavern.points.map((p) => encodeCoord(p.x, p.y, grid.width)),
+      );
 
       // Try to place room in a better position
       const otherRooms = currentRooms.filter((_, i) => i !== roomIndex);
