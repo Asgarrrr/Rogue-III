@@ -317,5 +317,3 @@ export const FloodFill = {
   findLargestRegion,
   areConnected,
 } as const;
-
-

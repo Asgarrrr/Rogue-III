@@ -74,7 +74,8 @@ class GeneratorRegistry {
       metadata: {
         name: "cellular",
         version: "1.0.0",
-        description: "Cellular automaton-based cave generator with room placement",
+        description:
+          "Cellular automaton-based cave generator with room placement",
       },
       create: (config, seeds) => new CellularGenerator(config, seeds),
     });
@@ -83,7 +84,8 @@ class GeneratorRegistry {
       metadata: {
         name: "bsp",
         version: "1.0.0",
-        description: "Binary Space Partitioning generator for structured dungeons",
+        description:
+          "Binary Space Partitioning generator for structured dungeons",
       },
       create: (config, seeds) => new BSPGenerator(config, seeds),
     });
@@ -139,7 +141,7 @@ class GeneratorRegistry {
    * Get metadata for all registered plugins
    */
   listPlugins(): GeneratorPluginMetadata[] {
-    return Array.from(this.plugins.values()).map(p => p.metadata);
+    return Array.from(this.plugins.values()).map((p) => p.metadata);
   }
 
   /**
@@ -161,7 +163,8 @@ class GeneratorRegistry {
    */
   create(config: DungeonConfig, seeds: DungeonSeed): DungeonGenerator {
     const key = String(config.algorithm || this.defaultAlgorithm).toLowerCase();
-    const plugin = this.plugins.get(key) ?? this.plugins.get(this.defaultAlgorithm);
+    const plugin =
+      this.plugins.get(key) ?? this.plugins.get(this.defaultAlgorithm);
 
     if (!plugin) {
       throw new Error(`No generator found for algorithm '${key}'`);
@@ -172,7 +175,7 @@ class GeneratorRegistry {
       const validation = plugin.validate(config);
       if (!validation.valid) {
         throw new Error(
-          `Invalid configuration for '${key}': ${validation.errors?.join(", ") ?? "Unknown error"}`
+          `Invalid configuration for '${key}': ${validation.errors?.join(", ") ?? "Unknown error"}`,
         );
       }
     }

@@ -1,10 +1,20 @@
-import { describe, test, expect } from "bun:test";
-import { PathFinder, DEFAULT_PATHFINDING_CONFIG, type PathfindingConfig } from "../../src/engine/dungeon/generators/algorithms/cellular/path-finder";
-import { Grid, CellType } from "../../src/engine/dungeon/core/grid";
+import { describe, expect, test } from "bun:test";
+import { CellType, Grid } from "../../src/engine/dungeon/core/grid";
 import { RoomImpl } from "../../src/engine/dungeon/entities/room";
+import {
+  DEFAULT_PATHFINDING_CONFIG,
+  PathFinder,
+  type PathfindingConfig,
+} from "../../src/engine/dungeon/generators/algorithms/cellular/path-finder";
 
 // Helper to create a room at specific position
-function createRoom(id: number, x: number, y: number, width: number, height: number): RoomImpl {
+function createRoom(
+  id: number,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): RoomImpl {
   return new RoomImpl({
     id,
     x,
@@ -12,12 +22,16 @@ function createRoom(id: number, x: number, y: number, width: number, height: num
     width,
     height,
     type: "test",
-    seed: id
+    seed: id,
   });
 }
 
 // Helper to create a grid with floor in specified areas
-function createGridWithFloor(width: number, height: number, floorAreas: { x: number; y: number; w: number; h: number }[]): Grid {
+function createGridWithFloor(
+  width: number,
+  height: number,
+  floorAreas: { x: number; y: number; w: number; h: number }[],
+): Grid {
   const grid = new Grid({ width, height }, CellType.WALL);
   // Add floor areas
   for (const area of floorAreas) {
@@ -31,7 +45,10 @@ function createGridWithFloor(width: number, height: number, floorAreas: { x: num
 }
 
 // Helper to check if path is contiguous (each point is 1 step from previous)
-function isPathContiguous(path: { x: number; y: number }[], allowDiagonal: boolean): boolean {
+function isPathContiguous(
+  path: { x: number; y: number }[],
+  allowDiagonal: boolean,
+): boolean {
   for (let i = 1; i < path.length; i++) {
     const dx = Math.abs(path[i].x - path[i - 1].x);
     const dy = Math.abs(path[i].y - path[i - 1].y);
@@ -40,7 +57,13 @@ function isPathContiguous(path: { x: number; y: number }[], allowDiagonal: boole
       if (dx > 1 || dy > 1) return false;
     } else {
       // Manhattan movement: either dx=1,dy=0 or dx=0,dy=1
-      if (!((dx === 1 && dy === 0) || (dx === 0 && dy === 1) || (dx === 0 && dy === 0))) {
+      if (
+        !(
+          (dx === 1 && dy === 0) ||
+          (dx === 0 && dy === 1) ||
+          (dx === 0 && dy === 0)
+        )
+      ) {
         return false;
       }
     }
@@ -73,12 +96,9 @@ describe("PathFinder", () => {
       const pathFinder = new PathFinder();
       const grid = createGridWithFloor(30, 20, [
         { x: 2, y: 5, w: 5, h: 5 },
-        { x: 20, y: 5, w: 5, h: 5 }
+        { x: 20, y: 5, w: 5, h: 5 },
       ]);
-      const rooms = [
-        createRoom(0, 2, 5, 5, 5),
-        createRoom(1, 20, 5, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 5, 5, 5), createRoom(1, 20, 5, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
 
@@ -92,14 +112,14 @@ describe("PathFinder", () => {
         { x: 20, y: 5, w: 5, h: 5 },
         { x: 35, y: 5, w: 5, h: 5 },
         { x: 5, y: 20, w: 5, h: 5 },
-        { x: 20, y: 20, w: 5, h: 5 }
+        { x: 20, y: 20, w: 5, h: 5 },
       ]);
       const rooms = [
         createRoom(0, 5, 5, 5, 5),
         createRoom(1, 20, 5, 5, 5),
         createRoom(2, 35, 5, 5, 5),
         createRoom(3, 5, 20, 5, 5),
-        createRoom(4, 20, 20, 5, 5)
+        createRoom(4, 20, 20, 5, 5),
       ];
 
       const connections = pathFinder.createConnections(rooms, grid);
@@ -114,13 +134,13 @@ describe("PathFinder", () => {
         { x: 5, y: 5, w: 5, h: 5 },
         { x: 25, y: 5, w: 5, h: 5 },
         { x: 5, y: 25, w: 5, h: 5 },
-        { x: 25, y: 25, w: 5, h: 5 }
+        { x: 25, y: 25, w: 5, h: 5 },
       ]);
       const rooms = [
         createRoom(0, 5, 5, 5, 5),
         createRoom(1, 25, 5, 5, 5),
         createRoom(2, 5, 25, 5, 5),
-        createRoom(3, 25, 25, 5, 5)
+        createRoom(3, 25, 25, 5, 5),
       ];
 
       const connections = pathFinder.createConnections(rooms, grid);
@@ -131,8 +151,8 @@ describe("PathFinder", () => {
         adjacency.set(room.id, new Set());
       }
       for (const conn of connections) {
-        adjacency.get(conn.from.id)!.add(conn.to.id);
-        adjacency.get(conn.to.id)!.add(conn.from.id);
+        adjacency.get(conn.from.id)?.add(conn.to.id);
+        adjacency.get(conn.to.id)?.add(conn.from.id);
       }
 
       // BFS to check connectivity
@@ -159,17 +179,14 @@ describe("PathFinder", () => {
       const config: PathfindingConfig = {
         ...DEFAULT_PATHFINDING_CONFIG,
         allowDiagonal: false,
-        pathSmoothingPasses: 0  // Disable smoothing to test raw path contiguity
+        pathSmoothingPasses: 0, // Disable smoothing to test raw path contiguity
       };
       const pathFinder = new PathFinder(config);
       const grid = createGridWithFloor(30, 20, [
         { x: 2, y: 5, w: 5, h: 5 },
-        { x: 20, y: 5, w: 5, h: 5 }
+        { x: 20, y: 5, w: 5, h: 5 },
       ]);
-      const rooms = [
-        createRoom(0, 2, 5, 5, 5),
-        createRoom(1, 20, 5, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 5, 5, 5), createRoom(1, 20, 5, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
 
@@ -183,12 +200,9 @@ describe("PathFinder", () => {
       const pathFinder = new PathFinder();
       const grid = createGridWithFloor(30, 20, [
         { x: 2, y: 5, w: 5, h: 5 },
-        { x: 20, y: 5, w: 5, h: 5 }
+        { x: 20, y: 5, w: 5, h: 5 },
       ]);
-      const rooms = [
-        createRoom(0, 2, 5, 5, 5),
-        createRoom(1, 20, 5, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 5, 5, 5), createRoom(1, 20, 5, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
 
@@ -203,12 +217,9 @@ describe("PathFinder", () => {
       const pathFinder = new PathFinder();
       const grid = createGridWithFloor(30, 20, [
         { x: 2, y: 5, w: 5, h: 5 },
-        { x: 20, y: 5, w: 5, h: 5 }
+        { x: 20, y: 5, w: 5, h: 5 },
       ]);
-      const rooms = [
-        createRoom(0, 2, 5, 5, 5),
-        createRoom(1, 20, 5, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 5, 5, 5), createRoom(1, 20, 5, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
 
@@ -222,17 +233,14 @@ describe("PathFinder", () => {
     test("paths respect maxPathLength", () => {
       const config: PathfindingConfig = {
         ...DEFAULT_PATHFINDING_CONFIG,
-        maxPathLength: 50
+        maxPathLength: 50,
       };
       const pathFinder = new PathFinder(config);
       const grid = createGridWithFloor(60, 20, [
         { x: 2, y: 5, w: 5, h: 5 },
-        { x: 50, y: 5, w: 5, h: 5 }
+        { x: 50, y: 5, w: 5, h: 5 },
       ]);
-      const rooms = [
-        createRoom(0, 2, 5, 5, 5),
-        createRoom(1, 50, 5, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 5, 5, 5), createRoom(1, 50, 5, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
 
@@ -247,7 +255,7 @@ describe("PathFinder", () => {
       const config: PathfindingConfig = {
         ...DEFAULT_PATHFINDING_CONFIG,
         algorithm: "astar",
-        preferJPS: false
+        preferJPS: false,
       };
       const pathFinder = new PathFinder(config);
 
@@ -256,8 +264,8 @@ describe("PathFinder", () => {
 
       // Create adjacent rooms so path is trivial
       const rooms = [
-        createRoom(0, 2, 5, 5, 5),   // center at (4, 7)
-        createRoom(1, 10, 5, 5, 5)   // center at (12, 7)
+        createRoom(0, 2, 5, 5, 5), // center at (4, 7)
+        createRoom(1, 10, 5, 5, 5), // center at (12, 7)
       ];
 
       const connections = pathFinder.createConnections(rooms, grid);
@@ -271,16 +279,13 @@ describe("PathFinder", () => {
     test("Dijkstra finds path in open grid", () => {
       const config: PathfindingConfig = {
         ...DEFAULT_PATHFINDING_CONFIG,
-        algorithm: "dijkstra"
+        algorithm: "dijkstra",
       };
       const pathFinder = new PathFinder(config);
 
       const grid = new Grid({ width: 20, height: 20 });
 
-      const rooms = [
-        createRoom(0, 2, 5, 5, 5),
-        createRoom(1, 10, 5, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 5, 5, 5), createRoom(1, 10, 5, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
 
@@ -294,16 +299,13 @@ describe("PathFinder", () => {
       const config: PathfindingConfig = {
         ...DEFAULT_PATHFINDING_CONFIG,
         preferJPS: true,
-        allowDiagonal: false
+        allowDiagonal: false,
       };
       const pathFinder = new PathFinder(config);
 
       const grid = new Grid({ width: 20, height: 20 });
 
-      const rooms = [
-        createRoom(0, 2, 5, 5, 5),
-        createRoom(1, 10, 5, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 5, 5, 5), createRoom(1, 10, 5, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
 
@@ -315,20 +317,17 @@ describe("PathFinder", () => {
         ...DEFAULT_PATHFINDING_CONFIG,
         algorithm: "astar",
         preferJPS: false,
-        tunnelWallCost: 5
+        tunnelWallCost: 5,
       };
       const pathFinder = new PathFinder(config);
 
       // Create grid with rooms separated by wall
       const grid = createGridWithFloor(30, 10, [
         { x: 2, y: 2, w: 5, h: 5 },
-        { x: 22, y: 2, w: 5, h: 5 }
+        { x: 22, y: 2, w: 5, h: 5 },
       ]);
 
-      const rooms = [
-        createRoom(0, 2, 2, 5, 5),
-        createRoom(1, 22, 2, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 2, 5, 5), createRoom(1, 22, 2, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
 
@@ -342,16 +341,13 @@ describe("PathFinder", () => {
     test("Manhattan heuristic produces valid path", () => {
       const config: PathfindingConfig = {
         ...DEFAULT_PATHFINDING_CONFIG,
-        heuristic: "manhattan"
+        heuristic: "manhattan",
       };
       const pathFinder = new PathFinder(config);
 
       const grid = new Grid({ width: 20, height: 20 });
 
-      const rooms = [
-        createRoom(0, 2, 5, 5, 5),
-        createRoom(1, 10, 5, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 5, 5, 5), createRoom(1, 10, 5, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
       expect(connections.length).toBeGreaterThan(0);
@@ -360,16 +356,13 @@ describe("PathFinder", () => {
     test("Euclidean heuristic produces valid path", () => {
       const config: PathfindingConfig = {
         ...DEFAULT_PATHFINDING_CONFIG,
-        heuristic: "euclidean"
+        heuristic: "euclidean",
       };
       const pathFinder = new PathFinder(config);
 
       const grid = new Grid({ width: 20, height: 20 });
 
-      const rooms = [
-        createRoom(0, 2, 5, 5, 5),
-        createRoom(1, 10, 5, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 5, 5, 5), createRoom(1, 10, 5, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
       expect(connections.length).toBeGreaterThan(0);
@@ -378,16 +371,13 @@ describe("PathFinder", () => {
     test("Chebyshev heuristic produces valid path", () => {
       const config: PathfindingConfig = {
         ...DEFAULT_PATHFINDING_CONFIG,
-        heuristic: "chebyshev"
+        heuristic: "chebyshev",
       };
       const pathFinder = new PathFinder(config);
 
       const grid = new Grid({ width: 20, height: 20 });
 
-      const rooms = [
-        createRoom(0, 2, 5, 5, 5),
-        createRoom(1, 10, 5, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 5, 5, 5), createRoom(1, 10, 5, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
       expect(connections.length).toBeGreaterThan(0);
@@ -398,11 +388,11 @@ describe("PathFinder", () => {
     test("smoothing reduces waypoints in straight corridors", () => {
       const configNoSmooth: PathfindingConfig = {
         ...DEFAULT_PATHFINDING_CONFIG,
-        pathSmoothingPasses: 0
+        pathSmoothingPasses: 0,
       };
       const configSmooth: PathfindingConfig = {
         ...DEFAULT_PATHFINDING_CONFIG,
-        pathSmoothingPasses: 2
+        pathSmoothingPasses: 2,
       };
 
       const pathFinderNoSmooth = new PathFinder(configNoSmooth);
@@ -410,10 +400,7 @@ describe("PathFinder", () => {
 
       const grid = new Grid({ width: 30, height: 10 });
 
-      const rooms = [
-        createRoom(0, 2, 2, 5, 5),
-        createRoom(1, 20, 2, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 2, 5, 5), createRoom(1, 20, 2, 5, 5)];
 
       const connNoSmooth = pathFinderNoSmooth.createConnections(rooms, grid);
       const connSmooth = pathFinderSmooth.createConnections(rooms, grid);
@@ -423,7 +410,9 @@ describe("PathFinder", () => {
       expect(connSmooth.length).toBeGreaterThan(0);
 
       // Smoothed path should have same or fewer points
-      expect(connSmooth[0].path.length).toBeLessThanOrEqual(connNoSmooth[0].path.length);
+      expect(connSmooth[0].path.length).toBeLessThanOrEqual(
+        connNoSmooth[0].path.length,
+      );
     });
   });
 
@@ -432,12 +421,9 @@ describe("PathFinder", () => {
       const pathFinder = new PathFinder();
       const grid = createGridWithFloor(30, 20, [
         { x: 0, y: 0, w: 5, h: 5 },
-        { x: 25, y: 15, w: 5, h: 5 }
+        { x: 25, y: 15, w: 5, h: 5 },
       ]);
-      const rooms = [
-        createRoom(0, 0, 0, 5, 5),
-        createRoom(1, 25, 15, 5, 5)
-      ];
+      const rooms = [createRoom(0, 0, 0, 5, 5), createRoom(1, 25, 15, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
 
@@ -448,12 +434,9 @@ describe("PathFinder", () => {
       const pathFinder = new PathFinder();
       const grid = createGridWithFloor(20, 10, [
         { x: 2, y: 2, w: 5, h: 5 },
-        { x: 7, y: 2, w: 5, h: 5 }
+        { x: 7, y: 2, w: 5, h: 5 },
       ]);
-      const rooms = [
-        createRoom(0, 2, 2, 5, 5),
-        createRoom(1, 7, 2, 5, 5)
-      ];
+      const rooms = [createRoom(0, 2, 2, 5, 5), createRoom(1, 7, 2, 5, 5)];
 
       const connections = pathFinder.createConnections(rooms, grid);
 
@@ -497,13 +480,13 @@ describe("PathFinder", () => {
         { x: 5, y: 5, w: 5, h: 5 },
         { x: 25, y: 5, w: 5, h: 5 },
         { x: 5, y: 25, w: 5, h: 5 },
-        { x: 25, y: 25, w: 5, h: 5 }
+        { x: 25, y: 25, w: 5, h: 5 },
       ]);
       const rooms = [
         createRoom(0, 5, 5, 5, 5),
         createRoom(1, 25, 5, 5, 5),
         createRoom(2, 5, 25, 5, 5),
-        createRoom(3, 25, 25, 5, 5)
+        createRoom(3, 25, 25, 5, 5),
       ];
 
       const conn1 = pathFinder.createConnections(rooms, grid);

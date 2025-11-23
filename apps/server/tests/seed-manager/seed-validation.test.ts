@@ -19,7 +19,7 @@ describe("Seed Validation", () => {
 
     test("should validate version format", () => {
       const validVersions = ["1.0.0", "2.1.3", "0.1.0", "10.99.999"];
-      const invalidVersions = ["1.0", "1.0.0.0", "abc", "1.0.a", ""];
+      const _invalidVersions = ["1.0", "1.0.0.0", "abc", "1.0.a", ""];
 
       for (const version of validVersions) {
         const seed = createMockSeed({ version });
@@ -141,8 +141,7 @@ describe("Seed Validation", () => {
       if (encoded.isErr()) throw new Error(encoded.error.message);
 
       // Corrupt the encoded string more significantly by replacing multiple characters
-      const corrupted =
-        encoded.value.substring(0, 5) + "XXXXX" + encoded.value.substring(10);
+      const corrupted = `${encoded.value.substring(0, 5)}XXXXX${encoded.value.substring(10)}`;
       const decoded = SeedManager.decodeSeed(corrupted);
 
       expect(decoded.isErr()).toBe(true);

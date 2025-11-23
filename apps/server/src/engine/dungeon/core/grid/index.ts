@@ -9,21 +9,18 @@
  * - Object pooling for garbage collection optimization
  */
 
-export * from "./types";
-export * from "./grid";
-export * from "./spatial-hash";
-export * from "./union-find";
 export * from "./flood-fill";
+export * from "./grid";
 export * from "./object-pool";
-
+export * from "./spatial-hash";
 // Re-export commonly used types for convenience
 export type {
-  Point,
   Bounds,
-  GridDimensions,
-  Region,
   FloodFillConfig,
+  GridDimensions,
+  Point,
+  Region,
 } from "./types";
+export * from "./types";
 export { CellType, DIRECTIONS_4, DIRECTIONS_8 } from "./types";
-
-
+export * from "./union-find";

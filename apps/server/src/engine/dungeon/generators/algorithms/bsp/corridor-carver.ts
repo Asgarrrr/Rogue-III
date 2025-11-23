@@ -50,7 +50,7 @@ export class BspCorridorCarver {
     grid: Grid,
   ): ConnectionImpl[] {
     const connections: ConnectionImpl[] = [];
-    const roomMap = this.buildRoomMap(rooms);
+    const _roomMap = this.buildRoomMap(rooms);
 
     // Connect sibling pairs (ensures all partitions are connected)
     for (const [leftLeaf, rightLeaf] of siblingPairs) {
@@ -67,11 +67,7 @@ export class BspCorridorCarver {
 
     // Add extra connections for redundancy if configured
     if (this.config.extraConnections > 0) {
-      const extraConns = this.createExtraConnections(
-        rooms,
-        connections,
-        grid,
-      );
+      const extraConns = this.createExtraConnections(rooms, connections, grid);
       connections.push(...extraConns);
     }
 

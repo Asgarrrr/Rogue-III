@@ -1,8 +1,8 @@
-import { defineConfig } from "eslint/config";
-import tseslint from "typescript-eslint";
-import reactX from "eslint-plugin-react-x";
-import reactDom from "eslint-plugin-react-dom";
 import { baseConfig } from "@repo/eslint-config/base";
+import { defineConfig } from "eslint/config";
+import reactDom from "eslint-plugin-react-dom";
+import reactX from "eslint-plugin-react-x";
+import tseslint from "typescript-eslint";
 
 /** @type {import("eslint").Linter.Config} */
 export default defineConfig(
@@ -23,5 +23,5 @@ export default defineConfig(
   },
   {
     ignores: ["dist/**", "node_modules/**"],
-  }
+  },
 );

@@ -21,7 +21,8 @@ describe("Seed Schemas", () => {
   });
 
   it("validates parts length", () => {
-    const res = SeedPartsSchema.safeParse([1, 2, 3, 4, 5, 6]);
+    // SeedPartsSchema expects 7 elements: primary, layout, rooms, connections, details, timestamp, crc
+    const res = SeedPartsSchema.safeParse([1, 2, 3, 4, 5, 123456, 789]);
     expect(res.success).toBe(true);
   });
 });

@@ -223,7 +223,7 @@ export class PipelineRunner {
     ];
     // If a step reads but never writes, it's fine. If a step mutates these without declaring writes,
     // we can't know at this point; we encourage explicit writes for snapshot accuracy.
-    for (const key of known) {
+    for (const _key of known) {
       // Soft assertion: require steps that likely mutate to declare writes based on id heuristics
       if (
         step.id.includes("compose") ||

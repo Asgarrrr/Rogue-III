@@ -8,9 +8,9 @@
 
 import type { SeededRandom } from "../../../core/random/seeded-random";
 import {
-  type BspPartitionConfig,
-  type BspNode,
   type BspLeaf,
+  type BspNode,
+  type BspPartitionConfig,
   isBspLeaf,
 } from "./config";
 
@@ -77,9 +77,7 @@ export class BspPartitioner {
    * Choose split direction based on node dimensions.
    * Prefers to split the longer dimension.
    */
-  private chooseSplitDirection(
-    node: BspNode,
-  ): "horizontal" | "vertical" {
+  private chooseSplitDirection(node: BspNode): "horizontal" | "vertical" {
     const aspectRatio = node.width / node.height;
 
     if (aspectRatio > 1.25) {

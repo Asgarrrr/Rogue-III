@@ -4,19 +4,19 @@ export type EntityId = number;
 
 export type ComponentKey = string;
 
-export interface ComponentType<TComponent> {
-	key: ComponentKey;
+export interface ComponentType<_TComponent> {
+  key: ComponentKey;
 }
 
 export function defineComponent<TComponent>(
-	key: ComponentKey
+  key: ComponentKey,
 ): ComponentType<TComponent> {
-	return { key };
+  return { key };
 }
 
 export type SystemPhase =
-	| "init"
-	| "preUpdate"
-	| "update"
-	| "postUpdate"
-	| "lateUpdate";
+  | "init"
+  | "preUpdate"
+  | "update"
+  | "postUpdate"
+  | "lateUpdate";

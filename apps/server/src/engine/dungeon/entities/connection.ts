@@ -1,4 +1,4 @@
-import { Room } from "../core/types";
+import type { Room } from "../core/types";
 
 export interface Connection {
   from: Room;

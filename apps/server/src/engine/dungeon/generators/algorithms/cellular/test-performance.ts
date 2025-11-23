@@ -1,5 +1,5 @@
+import type { DungeonConfig, DungeonSeed } from "../../../core/types";
 import { CellularGenerator } from "./cellular-generator";
-import { DungeonConfig, DungeonSeed } from "../../../core/types";
 
 /**
  * Performance test script for the new cellular generator
@@ -52,7 +52,7 @@ export async function testCellularGeneratorPerformance() {
   console.log(`  Min: ${minTime.toFixed(2)}ms`);
   console.log(`  Max: ${maxTime.toFixed(2)}ms`);
   console.log(
-    `  Std Dev: ${Math.sqrt(times.reduce((sum, time) => sum + Math.pow(time - avgTime, 2), 0) / times.length).toFixed(2)}ms`,
+    `  Std Dev: ${Math.sqrt(times.reduce((sum, time) => sum + (time - avgTime) ** 2, 0) / times.length).toFixed(2)}ms`,
   );
 
   // Test 2: Determinism validation
@@ -138,5 +138,3 @@ if (require.main === module) {
       process.exit(1);
     });
 }
-
-

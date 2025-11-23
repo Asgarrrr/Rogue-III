@@ -5,18 +5,18 @@
  */
 
 export { BSPGenerator } from "./bsp-generator";
-export { BspPartitioner } from "./partitioner";
-export { BspRoomPlacer } from "./room-placer";
-export { BspCorridorCarver } from "./corridor-carver";
 export {
+  type BspCorridorConfig,
   type BspGeneratorConfig,
+  type BspLeaf,
+  type BspNode,
   type BspPartitionConfig,
   type BspRoomConfig,
-  type BspCorridorConfig,
-  type BspNode,
-  type BspLeaf,
-  DEFAULT_BSP_CONFIG,
   COMPACT_BSP_CONFIG,
-  SPACIOUS_BSP_CONFIG,
+  DEFAULT_BSP_CONFIG,
   isBspLeaf,
+  SPACIOUS_BSP_CONFIG,
 } from "./config";
+export { BspCorridorCarver } from "./corridor-carver";
+export { BspPartitioner } from "./partitioner";
+export { BspRoomPlacer } from "./room-placer";

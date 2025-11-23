@@ -14,7 +14,7 @@
 
 import { CellType, Grid } from "../../../core/grid";
 import type { DungeonConfig, DungeonSeed } from "../../../core/types";
-import { ConnectionImpl } from "../../../entities/connection";
+import type { ConnectionImpl } from "../../../entities/connection";
 import { DungeonImpl } from "../../../entities/dungeon";
 import type { RoomImpl } from "../../../entities/room";
 import { DungeonGenerator } from "../../base/dungeon-generator";
@@ -23,7 +23,6 @@ import type { PipelineStep } from "../../pipeline";
 import {
   type BspGeneratorConfig,
   type BspLeaf,
-  type BspNode,
   DEFAULT_BSP_CONFIG,
 } from "./config";
 import { BspCorridorCarver } from "./corridor-carver";
@@ -112,12 +111,14 @@ export class BSPGenerator extends DungeonGenerator {
    */
   async generateAsync(
     onProgress?: (progress: number) => void,
+    signal?: AbortSignal,
   ): Promise<DungeonImpl> {
     const updateProgress = (percent: number) => {
       onProgress?.(Math.min(100, percent));
     };
 
     updateProgress(0);
+    this.throwIfAborted(signal);
 
     // Create initial grid filled with walls
     const grid = new Grid(
@@ -125,7 +126,7 @@ export class BSPGenerator extends DungeonGenerator {
       CellType.WALL,
     );
     updateProgress(5);
-    await this.yield();
+    await this.yield(signal);
 
     // Phase 1: Partition space (20%)
     const bspTree = this.partitioner.partition(
@@ -135,12 +136,12 @@ export class BSPGenerator extends DungeonGenerator {
     const leaves = this.partitioner.collectLeaves(bspTree);
     const siblingPairs = this.partitioner.findSiblingPairs(bspTree);
     updateProgress(25);
-    await this.yield();
+    await this.yield(signal);
 
     // Phase 2: Place rooms (25%)
     const rooms = this.roomPlacer.placeRooms(leaves);
     updateProgress(50);
-    await this.yield();
+    await this.yield(signal);
 
     // Phase 3: Create connections (20%)
     const connections = this.corridorCarver.createConnections(
@@ -149,19 +150,20 @@ export class BSPGenerator extends DungeonGenerator {
       grid,
     );
     updateProgress(70);
-    await this.yield();
+    await this.yield(signal);
 
     // Phase 4: Carve into grid (25%)
     this.carveRoomsIntoGrid(rooms, grid);
     updateProgress(85);
-    await this.yield();
+    await this.yield(signal);
 
     this.carveCorridorsIntoGrid(connections, grid);
     updateProgress(95);
-    await this.yield();
+    await this.yield(signal);
 
     // Calculate checksum
     const checksum = this.calculateChecksum(rooms, connections);
+    this.throwIfAborted(signal);
     updateProgress(100);
 
     return new DungeonImpl({
@@ -221,7 +223,9 @@ export class BSPGenerator extends DungeonGenerator {
       dependsOn: ["bsp.rooms"],
       run: (ctx) => {
         const rooms = ctx.graphs.rooms;
-        const siblings = ctx.meta.get("bsp.siblings") as Array<[BspLeaf, BspLeaf]>;
+        const siblings = ctx.meta.get("bsp.siblings") as Array<
+          [BspLeaf, BspLeaf]
+        >;
         const grid = ctx.grid.base;
         const connections = this.corridorCarver.createConnections(
           rooms,
@@ -347,17 +351,10 @@ export class BSPGenerator extends DungeonGenerator {
     }
     return hash;
   }
-
-  /**
-   * Yield to event loop to prevent blocking.
-   */
-  private async yield(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 0));
-  }
 }
 
+export * from "./config";
+export { BspCorridorCarver } from "./corridor-carver";
 // Export components for external use
 export { BspPartitioner } from "./partitioner";
 export { BspRoomPlacer } from "./room-placer";
-export { BspCorridorCarver } from "./corridor-carver";
-export * from "./config";

@@ -7,12 +7,12 @@
 
 import type { SeededRandom } from "../../../core/random/seeded-random";
 import { RoomImpl } from "../../../entities/room";
-import type { BspRoomConfig, BspLeaf } from "./config";
+import type { BspLeaf, BspRoomConfig } from "./config";
 
 /**
  * Room type categories for variety.
  */
-const ROOM_TYPES = [
+const _ROOM_TYPES = [
   "standard",
   "large",
   "corridor",
@@ -158,7 +158,10 @@ export class BspRoomPlacer {
       };
     }
 
-    const totalArea = rooms.reduce((sum, room) => sum + room.width * room.height, 0);
+    const totalArea = rooms.reduce(
+      (sum, room) => sum + room.width * room.height,
+      0,
+    );
     const typeDistribution: Record<string, number> = {};
 
     for (const room of rooms) {

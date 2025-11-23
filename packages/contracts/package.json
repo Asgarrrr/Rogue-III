@@ -11,9 +11,10 @@
       "types": "./src/index.ts"
     }
   },
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "dependencies": {
     "zod": "^4.1.5"
   }
 }
-

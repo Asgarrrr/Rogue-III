@@ -17,6 +17,7 @@ const DEFAULT_GENERATION_TIMEOUT_MS = 10_000;
 
 type GenerationOptions = {
   timeoutMs?: number;
+  signal?: AbortSignal;
 };
 
 function clampRoomCount(config: DungeonConfig): DungeonConfig {
@@ -63,9 +64,25 @@ function normalizeSeeds(
   return SeedManager.generateSeeds(normalizedResult.value);
 }
 
+function createAbortError(timeoutMs: number, reason?: unknown): DungeonError {
+  const message =
+    typeof reason === "string"
+      ? reason
+      : reason instanceof Error
+        ? reason.message
+        : "Dungeon generation aborted";
+
+  return DungeonError.generationTimeout(message, {
+    timeoutMs,
+    aborted: true,
+    reason: reason ?? null,
+  });
+}
+
 async function withGenerationTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<T> {
   if (timeoutMs <= 0) {
     throw DungeonError.generationTimeout("Dungeon generation timed out", {
@@ -73,10 +90,23 @@ async function withGenerationTimeout<T>(
     });
   }
 
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
   return new Promise<T>((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      if (signal) {
+        signal.removeEventListener("abort", onAbort);
+      }
+    };
+
+    const onAbort = () => {
+      cleanup();
+      reject(createAbortError(timeoutMs, signal?.reason));
+    };
+
     timer = setTimeout(() => {
+      cleanup();
       reject(
         DungeonError.generationTimeout("Dungeon generation timed out", {
           timeoutMs,
@@ -84,13 +114,21 @@ async function withGenerationTimeout<T>(
       );
     }, timeoutMs);
 
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+
     promise
       .then((value) => {
-        if (timer) clearTimeout(timer);
+        cleanup();
         resolve(value);
       })
       .catch((error) => {
-        if (timer) clearTimeout(timer);
+        cleanup();
         reject(error);
       });
   });
@@ -130,10 +168,20 @@ async function generateFromSeedAsync(
     seedsResult.value,
   );
 
+  if (options?.signal?.aborted) {
+    return Err(
+      createAbortError(
+        options.timeoutMs ?? DEFAULT_GENERATION_TIMEOUT_MS,
+        options.signal.reason,
+      ),
+    );
+  }
+
   try {
     const dungeon = await withGenerationTimeout(
-      generator.generateAsync(onProgress),
+      generator.generateAsync(onProgress, options?.signal),
       options?.timeoutMs ?? DEFAULT_GENERATION_TIMEOUT_MS,
+      options?.signal,
     );
     return Ok(dungeon);
   } catch (error) {

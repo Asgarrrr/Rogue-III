@@ -89,7 +89,7 @@ export class UnionFind {
       if (!components.has(root)) {
         components.set(root, []);
       }
-      components.get(root)!.push(i);
+      components.get(root)?.push(i);
     }
 
     return Array.from(components.values());
@@ -116,5 +116,3 @@ export class UnionFind {
     }
   }
 }
-
-

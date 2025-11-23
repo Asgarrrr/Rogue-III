@@ -51,7 +51,9 @@ describe("Performance Benchmarks", () => {
       }, 5);
 
       expect(elapsed).toBeLessThan(BASELINES.cellular_60x30);
-      console.log(`cellular 60x30: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.cellular_60x30}ms)`);
+      console.log(
+        `cellular 60x30: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.cellular_60x30}ms)`,
+      );
     });
 
     test("cellular 120x90 generates within baseline", () => {
@@ -70,7 +72,9 @@ describe("Performance Benchmarks", () => {
       }, 3);
 
       expect(elapsed).toBeLessThan(BASELINES.cellular_120x90);
-      console.log(`cellular 120x90: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.cellular_120x90}ms)`);
+      console.log(
+        `cellular 120x90: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.cellular_120x90}ms)`,
+      );
     });
 
     test("bsp 60x30 generates within baseline", () => {
@@ -89,7 +93,9 @@ describe("Performance Benchmarks", () => {
       }, 5);
 
       expect(elapsed).toBeLessThan(BASELINES.bsp_60x30);
-      console.log(`bsp 60x30: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.bsp_60x30}ms)`);
+      console.log(
+        `bsp 60x30: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.bsp_60x30}ms)`,
+      );
     });
 
     test("bsp 120x90 generates within baseline", () => {
@@ -108,7 +114,9 @@ describe("Performance Benchmarks", () => {
       }, 3);
 
       expect(elapsed).toBeLessThan(BASELINES.bsp_120x90);
-      console.log(`bsp 120x90: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.bsp_120x90}ms)`);
+      console.log(
+        `bsp 120x90: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.bsp_120x90}ms)`,
+      );
     });
   });
 
@@ -126,7 +134,9 @@ describe("Performance Benchmarks", () => {
       }, 3);
 
       expect(elapsed).toBeLessThan(BASELINES.grid_1000x1000_fill);
-      console.log(`grid 1000x1000 fill: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.grid_1000x1000_fill}ms)`);
+      console.log(
+        `grid 1000x1000 fill: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.grid_1000x1000_fill}ms)`,
+      );
     });
 
     test("flood fill 500x500 within baseline", () => {
@@ -140,7 +150,9 @@ describe("Performance Benchmarks", () => {
       }, 3);
 
       expect(elapsed).toBeLessThan(BASELINES.floodfill_500x500);
-      console.log(`floodfill 500x500: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.floodfill_500x500}ms)`);
+      console.log(
+        `floodfill 500x500: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.floodfill_500x500}ms)`,
+      );
     });
   });
 
@@ -155,7 +167,9 @@ describe("Performance Benchmarks", () => {
       }, 3);
 
       expect(elapsed).toBeLessThan(BASELINES.rng_1M_operations);
-      console.log(`rng 1M ops: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.rng_1M_operations}ms)`);
+      console.log(
+        `rng 1M ops: ${elapsed.toFixed(2)}ms (baseline: ${BASELINES.rng_1M_operations}ms)`,
+      );
     });
   });
 
@@ -218,7 +232,9 @@ describe("Performance Benchmarks", () => {
       expect(elapsed).toBeLessThan(1000);
       expect(regions.length).toBe(100); // 100 vertical stripes
 
-      console.log(`2000x2000 region finding: ${elapsed.toFixed(2)}ms, ${regions.length} regions`);
+      console.log(
+        `2000x2000 region finding: ${elapsed.toFixed(2)}ms, ${regions.length} regions`,
+      );
     });
   });
 });
