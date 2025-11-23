@@ -39,6 +39,19 @@ export const DEFAULT_PATHFINDING_CONFIG: PathfindingConfig = {
  */
 export class PathFinder {
   private readonly config: PathfindingConfig;
+  private aStarScratch?:
+    | {
+        width: number;
+        height: number;
+        openFlags: Uint8Array;
+        closedFlags: Uint8Array;
+        g: Float64Array;
+        f: Float64Array;
+        parent: Int32Array;
+        positions: Int32Array;
+        heap: number[];
+      }
+    | undefined;
 
   constructor(config: PathfindingConfig = DEFAULT_PATHFINDING_CONFIG) {
     this.config = config;
@@ -577,150 +590,208 @@ export class PathFinder {
    * A* pathfinding implementation
    */
   private findPathAStar(start: Point, end: Point, grid: Grid): Point[] {
-    interface Node {
-      x: number;
-      y: number;
-      g: number; // Cost from start
-      h: number; // Heuristic to end
-      f: number; // Total cost
-      parent: Node | null;
-      key: string;
-      heapIndex: number; // for decrease-key
+    const width = grid.width;
+    const height = grid.height;
+    const startX = Math.floor(start.x);
+    const startY = Math.floor(start.y);
+    const endX = Math.floor(end.x);
+    const endY = Math.floor(end.y);
+
+    if (!grid.isInBounds(startX, startY) || !grid.isInBounds(endX, endY)) {
+      return [];
     }
 
-    // Binary heap (min-heap) for open set
-    class MinHeap {
-      private arr: Node[] = [];
-      size(): number {
-        return this.arr.length;
-      }
-      push(n: Node) {
-        n.heapIndex = this.arr.length;
-        this.arr.push(n);
-        this.bubbleUp(n.heapIndex);
-      }
-      pop(): Node | undefined {
-        if (this.arr.length === 0) return undefined;
-        const top = this.arr[0];
-        const last = this.arr.pop();
-        if (last && this.arr.length > 0) {
-          this.arr[0] = last;
-          this.arr[0].heapIndex = 0;
-          this.bubbleDown(0);
-        }
-        return top;
-      }
-      update(n: Node) {
-        this.bubbleUp(n.heapIndex);
-        this.bubbleDown(n.heapIndex);
-      }
-      private bubbleUp(i: number) {
-        while (i > 0) {
-          const p = (i - 1) >> 1;
-          if (this.arr[p].f <= this.arr[i].f) break;
-          this.swap(i, p);
-          i = p;
-        }
-      }
-      private bubbleDown(i: number) {
-        const len = this.arr.length;
-        while (true) {
-          const l = i * 2 + 1,
-            r = l + 1;
-          let m = i;
-          if (l < len && this.arr[l].f < this.arr[m].f) m = l;
-          if (r < len && this.arr[r].f < this.arr[m].f) m = r;
-          if (m === i) break;
-          this.swap(i, m);
-          i = m;
-        }
-      }
-      private swap(i: number, j: number) {
-        const a = this.arr[i],
-          b = this.arr[j];
-        this.arr[i] = b;
-        this.arr[j] = a;
-        this.arr[i].heapIndex = i;
-        this.arr[j].heapIndex = j;
-      }
-    }
-
-    const openHeap = new MinHeap();
-    const openMap = new Map<string, Node>();
-    const closedSet = new Set<string>();
-
-    const getKey = (x: number, y: number) => `${x},${y}`;
     const heuristic = this.getHeuristicFunction();
+    const scratch = this.ensureAStarScratch(width, height);
+    const { openFlags, closedFlags, g, f, parent, positions, heap } = scratch;
 
-    const startNode: Node = {
-      x: start.x,
-      y: start.y,
-      g: 0,
-      h: heuristic(start, end),
-      f: 0,
-      parent: null,
-      key: getKey(start.x, start.y),
-      heapIndex: -1,
+    openFlags.fill(0);
+    closedFlags.fill(0);
+    g.fill(Infinity);
+    f.fill(Infinity);
+    parent.fill(-1);
+    positions.fill(-1);
+    heap.length = 0;
+
+    const encode = (x: number, y: number) => y * width + x;
+    const decode = (idx: number) => ({
+      x: idx % width,
+      y: Math.floor(idx / width),
+    });
+    const endIdx = encode(endX, endY);
+    const startIdx = encode(startX, startY);
+
+    const dirs = this.config.allowDiagonal
+      ? [
+          { x: -1, y: -1 },
+          { x: 0, y: -1 },
+          { x: 1, y: -1 },
+          { x: -1, y: 0 },
+          { x: 1, y: 0 },
+          { x: -1, y: 1 },
+          { x: 0, y: 1 },
+          { x: 1, y: 1 },
+        ]
+      : [
+          { x: 0, y: -1 },
+          { x: 1, y: 0 },
+          { x: 0, y: 1 },
+          { x: -1, y: 0 },
+        ];
+
+    const heapPush = (idx: number) => {
+      positions[idx] = heap.length;
+      heap.push(idx);
+      bubbleUp(heap.length - 1);
     };
-    startNode.f = startNode.g + startNode.h;
 
-    openHeap.push(startNode);
-    openMap.set(startNode.key, startNode);
+    const heapPop = (): number | undefined => {
+      if (heap.length === 0) return undefined;
+      const top = heap[0];
+      const last = heap.pop();
+      positions[top] = -1;
+      if (last !== undefined && heap.length > 0) {
+        heap[0] = last;
+        positions[last] = 0;
+        bubbleDown(0);
+      }
+      return top;
+    };
 
-    while (openHeap.size() > 0) {
-      const current = openHeap.pop();
-      if (!current) break;
-      openMap.delete(current.key);
+    const heapDecrease = (idx: number) => {
+      const pos = positions[idx];
+      if (pos >= 0) bubbleUp(pos);
+    };
 
-      // Check if we reached the goal
-      if (current.x === end.x && current.y === end.y) {
-        return this.reconstructPath(current);
+    const bubbleUp = (i: number) => {
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (f[heap[p]] <= f[heap[i]]) break;
+        swap(i, p);
+        i = p;
+      }
+    };
+
+    const bubbleDown = (i: number) => {
+      const len = heap.length;
+      while (true) {
+        const l = i * 2 + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < len && f[heap[l]] < f[heap[m]]) m = l;
+        if (r < len && f[heap[r]] < f[heap[m]]) m = r;
+        if (m === i) break;
+        swap(i, m);
+        i = m;
+      }
+    };
+
+    const swap = (a: number, b: number) => {
+      const tmp = heap[a];
+      heap[a] = heap[b];
+      heap[b] = tmp;
+      positions[heap[a]] = a;
+      positions[heap[b]] = b;
+    };
+
+    g[startIdx] = 0;
+    f[startIdx] = heuristic({ x: startX, y: startY }, end);
+    heapPush(startIdx);
+    openFlags[startIdx] = 1;
+
+    const isFloor = (x: number, y: number) =>
+      grid.isInBounds(x, y) && grid.getCell(x, y) === CellType.FLOOR;
+
+    while (heap.length > 0) {
+      const currentIdx = heapPop();
+      if (currentIdx === undefined) break;
+      if (currentIdx === endIdx) {
+        return this.reconstructPathFromParents(parent, endIdx, width);
       }
 
-      // Move current to closed set
-      const currentKey = current.key;
-      closedSet.add(currentKey);
+      closedFlags[currentIdx] = 1;
+      const { x: cx, y: cy } = decode(currentIdx);
 
-      // Check neighbors (including walls with tunneling cost)
-      const neighbors = this.getNeighbors(current.x, current.y, grid);
+      for (const dir of dirs) {
+        const nx = cx + dir.x;
+        const ny = cy + dir.y;
 
-      for (const neighbor of neighbors) {
-        const neighborKey = getKey(neighbor.x, neighbor.y);
+        if (!grid.isInBounds(nx, ny)) continue;
 
-        if (closedSet.has(neighborKey)) continue;
+        // Prevent corner cutting when diagonal moves are allowed
+        if (
+          dir.x !== 0 &&
+          dir.y !== 0 &&
+          (!isFloor(cx + dir.x, cy) || !isFloor(cx, cy + dir.y))
+        ) {
+          continue;
+        }
+
+        const neighborIdx = encode(nx, ny);
+        if (closedFlags[neighborIdx]) continue;
 
         const baseMoveCost = 1;
-        const isWall = grid.getCell(neighbor.x, neighbor.y) === CellType.WALL;
+        const isWall = grid.getCell(nx, ny) === CellType.WALL;
         const moveCost =
           baseMoveCost + (isWall ? this.config.tunnelWallCost : 0);
-        const tentativeG = current.g + moveCost;
-        const existingNode = openMap.get(neighborKey);
+        const tentativeG = g[currentIdx] + moveCost;
 
-        if (!existingNode) {
-          const neighborNode: Node = {
-            x: neighbor.x,
-            y: neighbor.y,
-            g: tentativeG,
-            h: heuristic(neighbor, end),
-            f: 0,
-            parent: current,
-            key: neighborKey,
-            heapIndex: -1,
-          };
-          neighborNode.f = neighborNode.g + neighborNode.h;
-          openMap.set(neighborKey, neighborNode);
-          openHeap.push(neighborNode);
-        } else if (tentativeG < existingNode.g) {
-          existingNode.g = tentativeG;
-          existingNode.f = existingNode.g + existingNode.h;
-          existingNode.parent = current;
-          openHeap.update(existingNode);
+        if (tentativeG < g[neighborIdx]) {
+          g[neighborIdx] = tentativeG;
+          f[neighborIdx] = tentativeG + heuristic({ x: nx, y: ny }, end);
+          parent[neighborIdx] = currentIdx;
+
+          if (openFlags[neighborIdx]) {
+            heapDecrease(neighborIdx);
+          } else {
+            heapPush(neighborIdx);
+            openFlags[neighborIdx] = 1;
+          }
         }
       }
     }
 
-    // No path found
     return [];
+  }
+
+  private ensureAStarScratch(width: number, height: number) {
+    const size = width * height;
+    if (
+      !this.aStarScratch ||
+      this.aStarScratch.width !== width ||
+      this.aStarScratch.height !== height
+    ) {
+      this.aStarScratch = {
+        width,
+        height,
+        openFlags: new Uint8Array(size),
+        closedFlags: new Uint8Array(size),
+        g: new Float64Array(size),
+        f: new Float64Array(size),
+        parent: new Int32Array(size),
+        positions: new Int32Array(size),
+        heap: [],
+      };
+    }
+    return this.aStarScratch;
+  }
+
+  private reconstructPathFromParents(
+    parent: Int32Array,
+    endIdx: number,
+    width: number,
+  ): Point[] {
+    const path: Point[] = [];
+    let current = endIdx;
+
+    while (current !== -1) {
+      const x = current % width;
+      const y = Math.floor(current / width);
+      path.unshift({ x, y });
+      current = parent[current];
+    }
+
+    return path;
   }
 
   /**
@@ -869,27 +940,6 @@ export class PathFinder {
       default:
         return (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
     }
-  }
-
-  /**
-   * Reconstruct path from A* node
-   */
-  private reconstructPath(endNode: {
-    x: number;
-    y: number;
-    parent: { x: number; y: number; parent: unknown } | null;
-  }): Point[] {
-    // Use a simple chain type to avoid unknown while preserving structure
-    type Chain = { x: number; y: number; parent: Chain | null };
-    const path: Point[] = [];
-    let current: Chain | null = endNode as unknown as Chain;
-
-    while (current) {
-      path.unshift({ x: current.x, y: current.y });
-      current = current.parent;
-    }
-
-    return path;
   }
 
   /**
