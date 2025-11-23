@@ -59,21 +59,40 @@ export class DungeonError extends Error {
   /**
    * Create a config validation error.
    */
-  static configInvalid(message: string, details?: Record<string, unknown>): DungeonError {
+  static configInvalid(
+    message: string,
+    details?: Record<string, unknown>,
+  ): DungeonError {
     return new DungeonError("CONFIG_INVALID", message, details);
   }
 
   /**
    * Create a seed decode error.
    */
-  static seedDecodeFailed(message: string, details?: Record<string, unknown>): DungeonError {
+  static seedDecodeFailed(
+    message: string,
+    details?: Record<string, unknown>,
+  ): DungeonError {
     return new DungeonError("SEED_DECODE_FAILED", message, details);
+  }
+
+  /**
+   * Create a generation timeout error.
+   */
+  static generationTimeout(
+    message: string,
+    details?: Record<string, unknown>,
+  ): DungeonError {
+    return new DungeonError("GENERATION_TIMEOUT", message, details);
   }
 
   /**
    * Create a generation error.
    */
-  static generationFailed(message: string, details?: Record<string, unknown>): DungeonError {
+  static generationFailed(
+    message: string,
+    details?: Record<string, unknown>,
+  ): DungeonError {
     return new DungeonError("GENERATION_FAILED", message, details);
   }
 

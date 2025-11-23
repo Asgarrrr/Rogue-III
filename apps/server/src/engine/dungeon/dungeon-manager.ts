@@ -1,10 +1,100 @@
-import type { DungeonConfig } from "./core/types";
+import {
+  DungeonError,
+  Err,
+  MAX_DUNGEON_CELLS,
+  Ok,
+  type Result,
+  ROOM_DENSITY_DIVISOR,
+} from "@rogue/contracts";
+import type { DungeonConfig, DungeonSeed } from "./core/types";
 import type { Dungeon } from "./entities";
 import type { DungeonGenerator } from "./generators/base/dungeon-generator";
 import { createGeneratorFromRegistry } from "./generators/registry";
 import { DungeonConfigSchema } from "./schema/dungeon";
 import { SeedManager } from "./serialization";
-import { Result, Ok, Err, DungeonError } from "@rogue/contracts";
+
+const DEFAULT_GENERATION_TIMEOUT_MS = 10_000;
+
+type GenerationOptions = {
+  timeoutMs?: number;
+};
+
+function clampRoomCount(config: DungeonConfig): DungeonConfig {
+  const area = config.width * config.height;
+  const minRooms = config.algorithm === "bsp" ? 1 : 0;
+  const maxRooms = Math.max(minRooms, Math.floor(area / ROOM_DENSITY_DIVISOR));
+
+  if (config.roomCount <= maxRooms) {
+    return config;
+  }
+
+  return { ...config, roomCount: maxRooms };
+}
+
+function applyConfigGuardrails(
+  config: DungeonConfig,
+): Result<DungeonConfig, DungeonError> {
+  const totalCells = config.width * config.height;
+  if (totalCells > MAX_DUNGEON_CELLS) {
+    return Err(
+      DungeonError.create(
+        "CONFIG_DIMENSION_TOO_LARGE",
+        "Dungeon area too large",
+        {
+          width: config.width,
+          height: config.height,
+          maxCells: MAX_DUNGEON_CELLS,
+        },
+      ),
+    );
+  }
+
+  return Ok(clampRoomCount(config));
+}
+
+function normalizeSeeds(
+  seedInput: string | number,
+): Result<DungeonSeed, DungeonError> {
+  const normalizedResult = SeedManager.normalizeSeed(seedInput);
+  if (normalizedResult.isErr()) {
+    return Err(normalizedResult.error);
+  }
+
+  return SeedManager.generateSeeds(normalizedResult.value);
+}
+
+async function withGenerationTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
+  if (timeoutMs <= 0) {
+    throw DungeonError.generationTimeout("Dungeon generation timed out", {
+      timeoutMs,
+    });
+  }
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  return new Promise<T>((resolve, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        DungeonError.generationTimeout("Dungeon generation timed out", {
+          timeoutMs,
+        }),
+      );
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        if (timer) clearTimeout(timer);
+        resolve(value);
+      })
+      .catch((error) => {
+        if (timer) clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
 
 /**
  * Generate a dungeon asynchronously with progress tracking.
@@ -13,6 +103,7 @@ async function generateFromSeedAsync(
   seedInput: string | number,
   config: DungeonConfig,
   onProgress?: (progress: number) => void,
+  options?: GenerationOptions,
 ): Promise<Result<Dungeon, DungeonError>> {
   const configResult = DungeonConfigSchema.safeParse(config);
 
@@ -24,13 +115,38 @@ async function generateFromSeedAsync(
     );
   }
 
-  const validatedConfig = configResult.data;
-  const primarySeed = SeedManager.normalizeSeed(seedInput);
-  const seeds = SeedManager.generateSeeds(primarySeed);
-  const generator = createGeneratorFromRegistry(validatedConfig, seeds);
+  const guardrailsResult = applyConfigGuardrails(configResult.data);
+  if (guardrailsResult.isErr()) {
+    return Err(guardrailsResult.error);
+  }
 
-  const dungeon = await generator.generateAsync(onProgress);
-  return Ok(dungeon);
+  const seedsResult = normalizeSeeds(seedInput);
+  if (seedsResult.isErr()) {
+    return Err(seedsResult.error);
+  }
+
+  const generator = createGeneratorFromRegistry(
+    guardrailsResult.value,
+    seedsResult.value,
+  );
+
+  try {
+    const dungeon = await withGenerationTimeout(
+      generator.generateAsync(onProgress),
+      options?.timeoutMs ?? DEFAULT_GENERATION_TIMEOUT_MS,
+    );
+    return Ok(dungeon);
+  } catch (error) {
+    if (DungeonError.isDungeonError(error)) {
+      return Err(error);
+    }
+
+    return Err(
+      DungeonError.generationFailed("Dungeon generation failed", {
+        reason: error instanceof Error ? error.message : "Unknown error",
+      }),
+    );
+  }
 }
 
 /**
@@ -50,12 +166,32 @@ function generateFromSeedSync(
     );
   }
 
-  const validatedConfig = configResult.data;
-  const primarySeed = SeedManager.normalizeSeed(seedInput);
-  const seeds = SeedManager.generateSeeds(primarySeed);
-  const generator = createGeneratorFromRegistry(validatedConfig, seeds);
+  const guardrailsResult = applyConfigGuardrails(configResult.data);
+  if (guardrailsResult.isErr()) {
+    return Err(guardrailsResult.error);
+  }
 
-  return Ok(generator.generate());
+  const seedsResult = normalizeSeeds(seedInput);
+  if (seedsResult.isErr()) {
+    return Err(seedsResult.error);
+  }
+
+  try {
+    const generator = createGeneratorFromRegistry(
+      guardrailsResult.value,
+      seedsResult.value,
+    );
+    return Ok(generator.generate());
+  } catch (error) {
+    if (DungeonError.isDungeonError(error)) {
+      return Err(error);
+    }
+    return Err(
+      DungeonError.generationFailed("Dungeon generation failed", {
+        reason: error instanceof Error ? error.message : "Unknown error",
+      }),
+    );
+  }
 }
 
 /**
@@ -80,15 +216,34 @@ function regenerateFromCode(
     );
   }
 
-  return Ok(createGeneratorFromRegistry(configResult.data, seedsResult.value).generate());
+  const guardrailsResult = applyConfigGuardrails(configResult.data);
+  if (guardrailsResult.isErr()) {
+    return Err(guardrailsResult.error);
+  }
+
+  try {
+    return Ok(
+      createGeneratorFromRegistry(
+        guardrailsResult.value,
+        seedsResult.value,
+      ).generate(),
+    );
+  } catch (error) {
+    if (DungeonError.isDungeonError(error)) {
+      return Err(error);
+    }
+    return Err(
+      DungeonError.generationFailed("Dungeon generation failed", {
+        reason: error instanceof Error ? error.message : "Unknown error",
+      }),
+    );
+  }
 }
 
 /**
  * Get a shareable code for a dungeon.
  */
-function getDungeonShareCode(
-  dungeon: Dungeon,
-): Result<string, DungeonError> {
+function getDungeonShareCode(dungeon: Dungeon): Result<string, DungeonError> {
   return SeedManager.encodeSeed(dungeon.seeds);
 }
 

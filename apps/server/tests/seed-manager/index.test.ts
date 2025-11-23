@@ -4,240 +4,265 @@ import { testSeeds } from "./test-helpers";
 
 // Main integration tests that cover the complete seed manager workflow
 describe("Seed Manager - Complete Integration", () => {
-	describe("End-to-end workflow", () => {
-		test("should complete full seed lifecycle: generate → encode → decode → verify", () => {
-			const originalSeed = SeedManager.generateSeeds(
-				testSeeds.validNumericSeed
-			);
+  describe("End-to-end workflow", () => {
+    test("should complete full seed lifecycle: generate → encode → decode → verify", () => {
+      const seedResult = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+      if (seedResult.isErr()) throw new Error(seedResult.error.message);
+      const originalSeed = seedResult.value;
 
-			const encoded = SeedManager.encodeSeed(originalSeed);
-			if (encoded.isErr()) throw new Error(encoded.error.message);
-			expect(typeof encoded.value).toBe("string");
-			expect(encoded.value.length).toBeGreaterThan(0);
+      const encoded = SeedManager.encodeSeed(originalSeed);
+      if (encoded.isErr()) throw new Error(encoded.error.message);
+      expect(typeof encoded.value).toBe("string");
+      expect(encoded.value.length).toBeGreaterThan(0);
 
-			const decodedSeed = SeedManager.decodeSeed(encoded.value);
-			if (decodedSeed.isErr()) throw new Error(decodedSeed.error.message);
+      const decodedSeed = SeedManager.decodeSeed(encoded.value);
+      if (decodedSeed.isErr()) throw new Error(decodedSeed.error.message);
 
-			expect(decodedSeed.value).toEqual(originalSeed);
-		});
+      expect(decodedSeed.value).toEqual(originalSeed);
+    });
 
-		test("should handle string input through full pipeline", () => {
-			const normalized = SeedManager.normalizeSeed(testSeeds.validStringSeed);
-			expect(typeof normalized).toBe("number");
+    test("should handle string input through full pipeline", () => {
+      const normalizedResult = SeedManager.normalizeSeed(
+        testSeeds.validStringSeed,
+      );
+      if (normalizedResult.isErr())
+        throw new Error(normalizedResult.error.message);
+      const normalized = normalizedResult.value;
+      expect(typeof normalized).toBe("number");
 
-			const seed = SeedManager.generateSeeds(normalized);
+      const seedResult = SeedManager.generateSeeds(normalized);
+      if (seedResult.isErr()) throw new Error(seedResult.error.message);
 
-			const encoded = SeedManager.encodeSeed(seed);
-			if (encoded.isErr()) throw new Error(encoded.error.message);
+      const encoded = SeedManager.encodeSeed(seedResult.value);
+      if (encoded.isErr()) throw new Error(encoded.error.message);
 
-			const decoded = SeedManager.decodeSeed(encoded.value);
-			if (decoded.isErr()) throw new Error(decoded.error.message);
+      const decoded = SeedManager.decodeSeed(encoded.value);
+      if (decoded.isErr()) throw new Error(decoded.error.message);
 
-			expect(decoded.value.primary).toBe(normalized);
-		});
+      expect(decoded.value.primary).toBe(normalized);
+    });
 
-		test("should maintain data integrity across multiple transformations", () => {
-			let currentSeed = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+    test("should maintain data integrity across multiple transformations", () => {
+      const seedResult = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+      if (seedResult.isErr()) throw new Error(seedResult.error.message);
+      let currentSeed = seedResult.value;
 
-			for (let cycle = 0; cycle < 5; cycle++) {
-				const encoded = SeedManager.encodeSeed(currentSeed);
-				if (encoded.isErr()) throw new Error(encoded.error.message);
+      for (let cycle = 0; cycle < 5; cycle++) {
+        const encoded = SeedManager.encodeSeed(currentSeed);
+        if (encoded.isErr()) throw new Error(encoded.error.message);
 
-				const decoded = SeedManager.decodeSeed(encoded.value);
-				if (decoded.isErr()) throw new Error(decoded.error.message);
+        const decoded = SeedManager.decodeSeed(encoded.value);
+        if (decoded.isErr()) throw new Error(decoded.error.message);
 
-				expect(decoded.value).toEqual(currentSeed);
-				currentSeed = decoded.value;
-			}
-		});
+        expect(decoded.value).toEqual(currentSeed);
+        currentSeed = decoded.value;
+      }
+    });
 
-		test("should handle different input types consistently", () => {
-			const testInputs = [
-				testSeeds.validNumericSeed,
-				testSeeds.validStringSeed,
-				1,
-			];
+    test("should handle different input types consistently", () => {
+      const testInputs = [
+        testSeeds.validNumericSeed,
+        testSeeds.validStringSeed,
+        1,
+      ];
 
-			for (const input of testInputs) {
-				const normalized = SeedManager.normalizeSeed(input);
-				const seed = SeedManager.generateSeeds(normalized);
-				const encoded = SeedManager.encodeSeed(seed);
-				if (encoded.isErr()) throw new Error(encoded.error.message);
+      for (const input of testInputs) {
+        const normalizedResult = SeedManager.normalizeSeed(input);
+        if (normalizedResult.isErr())
+          throw new Error(normalizedResult.error.message);
+        const normalized = normalizedResult.value;
 
-				const decoded = SeedManager.decodeSeed(encoded.value);
-				if (decoded.isErr()) throw new Error(decoded.error.message);
+        const seedResult = SeedManager.generateSeeds(normalized);
+        if (seedResult.isErr()) throw new Error(seedResult.error.message);
 
-				expect(decoded.value.primary).toBe(normalized);
-			}
-		});
-	});
+        const encoded = SeedManager.encodeSeed(seedResult.value);
+        if (encoded.isErr()) throw new Error(encoded.error.message);
 
-	describe("Cross-functional requirements", () => {
-		test("should generate shareable and deterministic seeds", () => {
-			const seed1 = SeedManager.generateSeeds(testSeeds.validNumericSeed);
-			const seed2 = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+        const decoded = SeedManager.decodeSeed(encoded.value);
+        if (decoded.isErr()) throw new Error(decoded.error.message);
 
-			expect(seed1).toEqual(seed2);
+        expect(decoded.value.primary).toBe(normalized);
+      }
+    });
+  });
 
-			const encoded = SeedManager.encodeSeed(seed1);
-			if (encoded.isErr()) throw new Error(encoded.error.message);
+  describe("Cross-functional requirements", () => {
+    test("should generate shareable and deterministic seeds", () => {
+      const seed1Result = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+      const seed2Result = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+      if (seed1Result.isErr()) throw new Error(seed1Result.error.message);
+      if (seed2Result.isErr()) throw new Error(seed2Result.error.message);
 
-			const decoded = SeedManager.decodeSeed(encoded.value);
-			if (decoded.isErr()) throw new Error(decoded.error.message);
+      expect(seed1Result.value).toEqual(seed2Result.value);
 
-			expect(decoded.value).toEqual(seed1);
-		});
+      const encoded = SeedManager.encodeSeed(seed1Result.value);
+      if (encoded.isErr()) throw new Error(encoded.error.message);
 
-		test("should handle edge cases gracefully throughout pipeline", () => {
-			const validEdgeCases = [1, Number.MAX_SAFE_INTEGER];
-			const invalidEdgeCases = [0, -1, Number.MIN_SAFE_INTEGER];
+      const decoded = SeedManager.decodeSeed(encoded.value);
+      if (decoded.isErr()) throw new Error(decoded.error.message);
 
-			for (const edgeCase of validEdgeCases) {
-				expect(() => {
-					const seed = SeedManager.generateSeeds(edgeCase);
-					const encoded = SeedManager.encodeSeed(seed);
-					if (encoded.isErr()) throw new Error(encoded.error.message);
+      expect(decoded.value).toEqual(seed1Result.value);
+    });
 
-					const decoded = SeedManager.decodeSeed(encoded.value);
-					if (decoded.isErr()) throw new Error(decoded.error.message);
+    test("should handle edge cases gracefully throughout pipeline", () => {
+      const validEdgeCases = [1, 0xffffffff];
+      const invalidEdgeCases = [-1, Number.MIN_SAFE_INTEGER];
 
-					expect(decoded.value).toEqual(seed);
-				}).not.toThrow();
-			}
+      for (const edgeCase of validEdgeCases) {
+        const seedResult = SeedManager.generateSeeds(edgeCase);
+        expect(seedResult.isOk()).toBe(true);
+        if (seedResult.isErr()) throw new Error(seedResult.error.message);
 
-			for (const edgeCase of invalidEdgeCases) {
-				expect(() => {
-					const seed = SeedManager.generateSeeds(edgeCase);
-					const encoded = SeedManager.encodeSeed(seed);
-					if (encoded.isErr()) {
-						// Validation correctly rejects invalid seeds
-					} else {
-						expect(seed.layout).toBeGreaterThanOrEqual(0);
-					}
-				}).not.toThrow();
-			}
-		});
+        const encoded = SeedManager.encodeSeed(seedResult.value);
+        if (encoded.isErr()) throw new Error(encoded.error.message);
 
-		test("should validate data integrity after each transformation", () => {
-			const seed = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+        const decoded = SeedManager.decodeSeed(encoded.value);
+        if (decoded.isErr()) throw new Error(decoded.error.message);
 
-			expect(seed).toHaveProperty("primary");
-			expect(seed).toHaveProperty("layout");
-			expect(seed).toHaveProperty("rooms");
-			expect(seed).toHaveProperty("connections");
-			expect(seed).toHaveProperty("details");
-			expect(seed).toHaveProperty("version");
-			expect(seed).toHaveProperty("timestamp");
+        expect(decoded.value).toEqual(seedResult.value);
+      }
 
-			const encoded = SeedManager.encodeSeed(seed);
-			if (encoded.isErr()) throw new Error(encoded.error.message);
-			expect(typeof encoded.value).toBe("string");
+      for (const edgeCase of invalidEdgeCases) {
+        const result = SeedManager.generateSeeds(edgeCase);
+        expect(result.isErr()).toBe(true);
+      }
+    });
 
-			const decoded = SeedManager.decodeSeed(encoded.value);
-			if (decoded.isErr()) throw new Error(decoded.error.message);
-			expect(decoded.value).toEqual(seed);
-		});
-	});
+    test("should validate data integrity after each transformation", () => {
+      const seedResult = SeedManager.generateSeeds(testSeeds.validNumericSeed);
+      if (seedResult.isErr()) throw new Error(seedResult.error.message);
+      const seed = seedResult.value;
 
-	describe("Performance characteristics", () => {
-		test("should perform operations within reasonable time limits", () => {
-			const startTime = Date.now();
+      expect(seed).toHaveProperty("primary");
+      expect(seed).toHaveProperty("layout");
+      expect(seed).toHaveProperty("rooms");
+      expect(seed).toHaveProperty("connections");
+      expect(seed).toHaveProperty("details");
+      expect(seed).toHaveProperty("version");
+      expect(seed).toHaveProperty("timestamp");
 
-			// Perform 100 complete cycles
-			for (let i = 0; i < 100; i++) {
-				const seed = SeedManager.generateSeeds(i + 1); // Start from 1 since 0 is invalid
-				const encoded = SeedManager.encodeSeed(seed);
-				if (encoded.isErr()) throw new Error(encoded.error.message);
+      const encoded = SeedManager.encodeSeed(seed);
+      if (encoded.isErr()) throw new Error(encoded.error.message);
+      expect(typeof encoded.value).toBe("string");
 
-				const decoded = SeedManager.decodeSeed(encoded.value);
-				if (decoded.isErr()) throw new Error(decoded.error.message);
-			}
+      const decoded = SeedManager.decodeSeed(encoded.value);
+      if (decoded.isErr()) throw new Error(decoded.error.message);
+      expect(decoded.value).toEqual(seed);
+    });
+  });
 
-			const endTime = Date.now();
-			const duration = endTime - startTime;
+  describe("Performance characteristics", () => {
+    test("should perform operations within reasonable time limits", () => {
+      const startTime = Date.now();
 
-			// Should complete within 1 second (reasonable performance threshold)
-			expect(duration).toBeLessThan(1000);
-		});
+      // Perform 100 complete cycles
+      for (let i = 0; i < 100; i++) {
+        const seedResult = SeedManager.generateSeeds(i + 1); // Start from 1 since 0 is invalid
+        if (seedResult.isErr()) throw new Error(seedResult.error.message);
 
-		test("should handle concurrent seed operations", async () => {
-			const concurrentOperations = 50;
-			const promises = Array.from(
-				{ length: concurrentOperations },
-				async (_, i) => {
-					const seed = SeedManager.generateSeeds(1000 + i);
-					const encoded = SeedManager.encodeSeed(seed);
-					if (encoded.isErr()) throw new Error(encoded.error.message);
+        const encoded = SeedManager.encodeSeed(seedResult.value);
+        if (encoded.isErr()) throw new Error(encoded.error.message);
 
-					const decoded = SeedManager.decodeSeed(encoded.value);
-					if (decoded.isErr()) throw new Error(decoded.error.message);
+        const decoded = SeedManager.decodeSeed(encoded.value);
+        if (decoded.isErr()) throw new Error(decoded.error.message);
+      }
 
-					return decoded.value;
-				}
-			);
+      const endTime = Date.now();
+      const duration = endTime - startTime;
 
-			const results = await Promise.all(promises);
+      // Should complete within 1 second (reasonable performance threshold)
+      expect(duration).toBeLessThan(1000);
+    });
 
-			for (const result of results) {
-				expect(result).toHaveProperty("primary");
-			}
-		});
-	});
+    test("should handle concurrent seed operations", async () => {
+      const concurrentOperations = 50;
+      const promises = Array.from(
+        { length: concurrentOperations },
+        async (_, i) => {
+          const seedResult = SeedManager.generateSeeds(1000 + i);
+          if (seedResult.isErr()) throw new Error(seedResult.error.message);
 
-	describe("Error recovery and resilience", () => {
-		test("should handle and recover from invalid inputs", () => {
-			const invalidInputs = [
-				"",
-				"invalid-string",
-				"not-a-valid-encoded-seed",
-				null,
-				undefined,
-			];
+          const encoded = SeedManager.encodeSeed(seedResult.value);
+          if (encoded.isErr()) throw new Error(encoded.error.message);
 
-			for (const input of invalidInputs) {
-				// These operations should not throw exceptions
-				expect(() => {
-					// @ts-ignore - Testing invalid inputs
-					const normalized = SeedManager.normalizeSeed(input);
-					if (typeof normalized === "number" && normalized > 0) {
-						const seed = SeedManager.generateSeeds(normalized);
-						const encoded = SeedManager.encodeSeed(seed);
-						if (encoded.isErr()) throw new Error(encoded.error.message);
+          const decoded = SeedManager.decodeSeed(encoded.value);
+          if (decoded.isErr()) throw new Error(decoded.error.message);
 
-						const decoded = SeedManager.decodeSeed(encoded.value);
-						if (decoded.isErr()) throw new Error(decoded.error.message);
-					}
-				}).not.toThrow();
-			}
-		});
+          return decoded.value;
+        },
+      );
 
-		test("should maintain system stability under stress", () => {
-			const stressIterations = 1000;
+      const results = await Promise.all(promises);
 
-			for (let i = 0; i < stressIterations; i++) {
-				try {
-					const randomValue = Math.floor(Math.random() * 1000000) + 1; // Ensure positive values
-					const seed = SeedManager.generateSeeds(randomValue);
-					const encoded = SeedManager.encodeSeed(seed);
+      for (const result of results) {
+        expect(result).toHaveProperty("primary");
+      }
+    });
+  });
 
-					if (encoded.isErr()) {
-						// This is acceptable - some inputs might produce validation errors
-						continue;
-					}
+  describe("Error recovery and resilience", () => {
+    test("should handle and recover from invalid inputs", () => {
+      const invalidInputs = [null, undefined];
+      const hashableInputs = ["", "invalid-string", "not-a-valid-encoded-seed"];
 
-					const decoded = SeedManager.decodeSeed(encoded.value);
+      for (const input of invalidInputs) {
+        // @ts-expect-error - Testing invalid inputs
+        const result = SeedManager.normalizeSeed(input);
+        // These will either throw or return an error result
+        expect(result === undefined || result.isErr()).toBe(true);
+      }
 
-					if (decoded.isErr()) {
-						// This is acceptable - some decodings might fail
-						continue;
-					}
+      for (const input of hashableInputs) {
+        const normalizedResult = SeedManager.normalizeSeed(input);
+        expect(normalizedResult.isOk()).toBe(true);
+        if (normalizedResult.isErr())
+          throw new Error(normalizedResult.error.message);
 
-					expect(decoded.value.primary).toBe(seed.primary);
-				} catch (error) {
-					// Log but don't fail - we're testing resilience
-					console.warn(`Iteration ${i} failed:`, error);
-				}
-			}
-		});
-	});
+        const seedResult = SeedManager.generateSeeds(normalizedResult.value);
+        expect(seedResult.isOk()).toBe(true);
+        if (seedResult.isErr()) throw new Error(seedResult.error.message);
+
+        const encoded = SeedManager.encodeSeed(seedResult.value);
+        if (encoded.isErr()) throw new Error(encoded.error.message);
+
+        const decoded = SeedManager.decodeSeed(encoded.value);
+        if (decoded.isErr()) throw new Error(decoded.error.message);
+      }
+    });
+
+    test("should maintain system stability under stress", () => {
+      const stressIterations = 1000;
+
+      for (let i = 0; i < stressIterations; i++) {
+        try {
+          const randomValue = Math.floor(Math.random() * 1000000) + 1; // Ensure positive values
+          const seedResult = SeedManager.generateSeeds(randomValue);
+
+          if (seedResult.isErr()) {
+            // This is acceptable - some inputs might produce validation errors
+            continue;
+          }
+
+          const encoded = SeedManager.encodeSeed(seedResult.value);
+
+          if (encoded.isErr()) {
+            // This is acceptable - some inputs might produce validation errors
+            continue;
+          }
+
+          const decoded = SeedManager.decodeSeed(encoded.value);
+
+          if (decoded.isErr()) {
+            // This is acceptable - some decodings might fail
+            continue;
+          }
+
+          expect(decoded.value.primary).toBe(seedResult.value.primary);
+        } catch (error) {
+          // Log but don't fail - we're testing resilience
+          console.warn(`Iteration ${i} failed:`, error);
+        }
+      }
+    });
+  });
 });

@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+export const MAX_DUNGEON_CELLS = 1_000_000;
+export const ROOM_DENSITY_DIVISOR = 25;
+
 const SharedFields = {
   width: z.number().int("Width must be an integer").min(10).max(10000),
   height: z.number().int("Height must be an integer").min(10).max(10000),
@@ -9,8 +12,37 @@ const SharedFields = {
       z.number().int().max(100, "Maximum room size cannot exceed 100"),
     ])
     .refine(([min, max]) => min <= max, {
-      message: "Minimum room size must be ≤ maximum room size",
+      message: "Minimum room size must be <= maximum room size",
     }),
+};
+
+const ensureDimensionsSafe = (
+  data: { width: number; height: number; roomSizeRange: [number, number] },
+  ctx: z.RefinementCtx,
+) => {
+  const maxRoom = data.roomSizeRange[1];
+  if (!(maxRoom < data.width && maxRoom < data.height)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Maximum room size exceeds dungeon dimensions",
+      path: ["roomSizeRange"],
+    });
+  }
+};
+
+const clampRoomCount = <
+  T extends { width: number; height: number; roomCount: number },
+>(
+  data: T,
+  minimumRoomCount: number,
+): T => {
+  const area = data.width * data.height;
+  const maxRooms = Math.max(
+    minimumRoomCount,
+    Math.floor(area / ROOM_DENSITY_DIVISOR),
+  );
+  const clampedRoomCount = Math.min(data.roomCount, maxRooms);
+  return { ...data, roomCount: clampedRoomCount };
 };
 
 const CellularSchema = z
@@ -20,23 +52,9 @@ const CellularSchema = z
     roomCount: z.number().int().min(0).max(1000),
   })
   .superRefine((data, ctx) => {
-    const max = data.roomSizeRange[1];
-    if (!(max < data.width && max < data.height)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Maximum room size exceeds dungeon dimensions",
-        path: ["roomSizeRange"],
-      });
-    }
-    const maxReasonableRooms = (data.width * data.height) / 25;
-    if (data.roomCount > maxReasonableRooms) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Too many rooms for dungeon size (max 1 room per 25 cells)",
-        path: ["roomCount"],
-      });
-    }
-  });
+    ensureDimensionsSafe(data, ctx);
+  })
+  .transform((data) => clampRoomCount(data, 0));
 
 const BSPSchema = z
   .object({
@@ -45,23 +63,9 @@ const BSPSchema = z
     roomCount: z.number().int().min(1).max(1000),
   })
   .superRefine((data, ctx) => {
-    const max = data.roomSizeRange[1];
-    if (!(max < data.width && max < data.height)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Maximum room size exceeds dungeon dimensions",
-        path: ["roomSizeRange"],
-      });
-    }
-    const maxReasonableRooms = (data.width * data.height) / 25;
-    if (data.roomCount > maxReasonableRooms) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Too many rooms for dungeon size (max 1 room per 25 cells)",
-        path: ["roomCount"],
-      });
-    }
-  });
+    ensureDimensionsSafe(data, ctx);
+  })
+  .transform((data) => clampRoomCount(data, 1));
 
 export const DungeonConfigSchema = z.discriminatedUnion("algorithm", [
   CellularSchema,

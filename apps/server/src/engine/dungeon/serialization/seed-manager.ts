@@ -1,4 +1,4 @@
-import { DungeonError, Err, Ok, type Result } from "@rogue/contracts";
+import { crc32, DungeonError, Err, Ok, type Result } from "@rogue/contracts";
 import { SeededRandom } from "../core/random/seeded-random";
 import type { DungeonSeed } from "../core/types/dungeon.types";
 import {
@@ -12,20 +12,31 @@ import {
  * These are well-known hash constants from MurmurHash and other algorithms.
  * Using different constants for each seed ensures decorrelated random streams.
  *
- * - LAYOUT: Golden ratio (f) as 32-bit integer - produces well-distributed hashes
- * - ROOMS: MurmurHash3 constant - good avalanche properties
- * - CONNECTIONS: Second MurmurHash3 constant - different bit patterns
- * - DETAILS: Third MurmurHash3 constant - completes the decorrelation
+ * References:
+ * - Golden ratio: https://en.wikipedia.org/wiki/Golden_ratio
+ * - MurmurHash3: https://github.com/aappleby/smhasher/blob/master/src/MurmurHash3.cpp
+ *
+ * - LAYOUT: Golden ratio (φ) as 32-bit integer - produces well-distributed hashes
+ * - ROOMS: MurmurHash3 mixing constant c1 (line 68)
+ * - CONNECTIONS: MurmurHash3 mixing constant c2 (line 69)
+ * - DETAILS: MurmurHash3 finalization constant (line 81)
  */
 const MAGIC_NUMBERS = {
-  LAYOUT: 0x9e3779b9, // (2^32) / f - Golden ratio constant
-  ROOMS: 0x85ebca6b, // MurmurHash3 mixing constant 1
-  CONNECTIONS: 0xc2b2ae35, // MurmurHash3 mixing constant 2
+  LAYOUT: 0x9e3779b9, // floor(2^32 / φ) - Golden ratio constant
+  ROOMS: 0x85ebca6b, // MurmurHash3 fmix32 constant 1
+  CONNECTIONS: 0xc2b2ae35, // MurmurHash3 fmix32 constant 2
   DETAILS: 0x27d4eb2f, // MurmurHash3 finalization constant
 } as const;
 
 const DEFAULT_VERSION = "1.0.0";
-const DEFAULT_TIMESTAMP_MAX = 0x7fffffff; // Keep timestamps portable/int32-safe
+const UINT32_MAX = 0xffffffff;
+/**
+ * Maximum value for derived timestamps in share codes.
+ * This is NOT a Unix timestamp - it's a deterministic value derived from the seed
+ * for reproducibility. We use int32 max (2^31 - 1) to stay within JavaScript's
+ * safe integer arithmetic bounds and avoid overflow in range calculations.
+ */
+const DERIVED_TIMESTAMP_MAX = 0x7fffffff;
 
 type SeedGenerationOptions = {
   version?: string;
@@ -40,23 +51,80 @@ type SeedGenerationOptions = {
   timestamp?: number;
 };
 
+const seedToPayloadParts = (seed: DungeonSeed): number[] => [
+  seed.primary,
+  seed.layout,
+  seed.rooms,
+  seed.connections,
+  seed.details,
+  seed.timestamp,
+];
+
+const computeSeedChecksum = (parts: number[]): number => crc32(parts.join("|"));
+
+function sanitizePrimarySeed(
+  primarySeed: number,
+): Result<number, DungeonError> {
+  if (!Number.isFinite(primarySeed)) {
+    return Err(
+      DungeonError.create("SEED_INVALID", "Seed must be a finite number", {
+        seed: primarySeed,
+      }),
+    );
+  }
+  if (Number.isNaN(primarySeed)) {
+    return Err(DungeonError.create("SEED_INVALID", "Seed must not be NaN"));
+  }
+  if (primarySeed < 0) {
+    return Err(
+      DungeonError.create("SEED_INVALID", "Seed must be non-negative", {
+        seed: primarySeed,
+      }),
+    );
+  }
+
+  const normalized = Math.trunc(primarySeed);
+  return Ok(Math.min(normalized, UINT32_MAX) >>> 0);
+}
+
 function deriveDeterministicTimestamp(primarySeed: number): number {
   const mixSeed = (primarySeed ^ MAGIC_NUMBERS.DETAILS) >>> 0;
   const rng = new SeededRandom(mixSeed);
-  return rng.range(1, DEFAULT_TIMESTAMP_MAX);
+  return rng.range(1, DERIVED_TIMESTAMP_MAX);
 }
 
 function generateSeeds(
   primarySeed: number,
   options: SeedGenerationOptions | string = {},
-): DungeonSeed {
+): Result<DungeonSeed, DungeonError> {
   const normalizedOptions: SeedGenerationOptions =
     typeof options === "string" ? { version: options } : options;
 
   const version = normalizedOptions.version ?? DEFAULT_VERSION;
-  const deterministicTimestamp = normalizedOptions.deterministicTimestamp ?? true;
-  const normalizedSeed = primarySeed >>> 0;
+  const deterministicTimestamp =
+    normalizedOptions.deterministicTimestamp ?? true;
+
+  const sanitizeResult = sanitizePrimarySeed(primarySeed);
+  if (sanitizeResult.isErr()) {
+    return Err(sanitizeResult.error);
+  }
+  const normalizedSeed = sanitizeResult.value;
   const rng = new SeededRandom(normalizedSeed);
+
+  if (
+    normalizedOptions.timestamp !== undefined &&
+    normalizedOptions.timestamp <= 0
+  ) {
+    return Err(
+      DungeonError.create(
+        "SEED_INVALID",
+        "Timestamp override must be positive",
+        {
+          timestamp: normalizedOptions.timestamp,
+        },
+      ),
+    );
+  }
 
   const timestamp =
     normalizedOptions.timestamp ??
@@ -64,7 +132,7 @@ function generateSeeds(
       ? deriveDeterministicTimestamp(normalizedSeed)
       : Date.now());
 
-  return {
+  return Ok({
     primary: normalizedSeed,
     layout: (normalizedSeed ^ MAGIC_NUMBERS.LAYOUT) >>> 0,
     rooms: rng.range(1_000_000, 9_999_999),
@@ -72,11 +140,16 @@ function generateSeeds(
     details: rng.range(1_000_000, 9_999_999),
     version,
     timestamp,
-  };
+  });
 }
 
-function normalizeSeed(seedInput: string | number): number {
-  return typeof seedInput === "string" ? seedFromString(seedInput) : seedInput;
+function normalizeSeed(
+  seedInput: string | number,
+): Result<number, DungeonError> {
+  if (typeof seedInput === "string") {
+    return Ok(seedFromString(seedInput));
+  }
+  return sanitizePrimarySeed(seedInput);
 }
 
 function seedFromString(input: string): number {
@@ -122,14 +195,9 @@ function encodeSeed(seed: DungeonSeed): Result<string, DungeonError> {
     );
   }
   try {
-    const data = [
-      seed.primary,
-      seed.layout,
-      seed.rooms,
-      seed.connections,
-      seed.details,
-      seed.timestamp,
-    ];
+    const payload = seedToPayloadParts(seed);
+    const checksum = computeSeedChecksum(payload);
+    const data = [...payload, checksum];
     return Ok(toBase64Url(btoa(data.join("|"))));
   } catch (error) {
     return Err(
@@ -160,8 +228,30 @@ function decodeSeed(encoded: string): Result<DungeonSeed, DungeonError> {
         }),
       );
     }
+
+    const [
+      primary,
+      layout,
+      rooms,
+      connections,
+      details,
+      timestamp,
+      crcFromEncoding,
+    ] = partsValidation.data;
+    const payload = [primary, layout, rooms, connections, details, timestamp];
+    const crcFromPayload = computeSeedChecksum(payload);
+    const receivedCrc = crcFromEncoding;
+    if (crcFromPayload !== receivedCrc) {
+      return Err(
+        DungeonError.seedDecodeFailed("Seed integrity check failed", {
+          expectedCrc: crcFromPayload,
+          receivedCrc,
+        }),
+      );
+    }
+
     const seedValidation = DungeonSeedSchema.safeParse(
-      createSeedFromParts(parts),
+      createSeedFromParts(payload),
     );
     if (!seedValidation.success) {
       return Err(
