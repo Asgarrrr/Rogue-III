@@ -1,13 +1,23 @@
 import {
   type PipelineSnapshot,
-  PipelineSnapshotSchema,
   type ProgressEvent,
   ProgressEventSchema,
 } from "@rogue/contracts";
+import { performance } from "node:perf_hooks";
 import type { Grid, Region } from "../../core/grid";
 import type { DungeonConfig } from "../../core/types";
 import type { ConnectionImpl } from "../../entities/connection";
 import type { RoomImpl } from "../../entities/room";
+import { snapshotHandlerRegistry } from "./snapshot-handlers";
+
+export type { SnapshotHandler } from "./snapshot-handlers";
+// Re-export snapshot handler utilities
+export {
+  registerSnapshotHandler,
+  SnapshotConstructors,
+  snapshotHandlerRegistry,
+  unregisterSnapshotHandler,
+} from "./snapshot-handlers";
 
 export interface GenContext {
   grid: { base: Grid; layers: Map<string, Grid> };
@@ -46,24 +56,50 @@ export interface RunnerOptions {
   onSnapshotEvent?(event: PipelineSnapshot): void;
 }
 
-// Optional global observers (useful for CLI/demo without plumbing options through)
-let GLOBAL_ON_PROGRESS_EVENT: ((event: ProgressEvent) => void) | undefined;
-let GLOBAL_ON_SNAPSHOT_EVENT: ((event: PipelineSnapshot) => void) | undefined;
-
-export function setGlobalPipelineHandlers(handlers: {
+/**
+ * Context-local pipeline handlers.
+ * Stored per-runner instance instead of global state.
+ */
+export interface PipelineHandlers {
   onProgressEvent?: (event: ProgressEvent) => void;
   onSnapshotEvent?: (event: PipelineSnapshot) => void;
-}) {
-  GLOBAL_ON_PROGRESS_EVENT = handlers.onProgressEvent;
-  GLOBAL_ON_SNAPSHOT_EVENT = handlers.onSnapshotEvent;
+}
+
+/**
+ * WeakMap to store handlers per PipelineRunner instance.
+ * This avoids global mutable state while allowing handler configuration.
+ */
+const runnerHandlers = new WeakMap<PipelineRunner, PipelineHandlers>();
+
+/**
+ * Set handlers for a specific pipeline runner instance.
+ * Replaces global state with instance-specific handlers.
+ */
+export function setPipelineHandlers(
+  runner: PipelineRunner,
+  handlers: PipelineHandlers,
+): void {
+  runnerHandlers.set(runner, handlers);
+}
+
+/**
+ * Get handlers for a specific pipeline runner instance.
+ */
+export function getPipelineHandlers(
+  runner: PipelineRunner,
+): PipelineHandlers | undefined {
+  return runnerHandlers.get(runner);
 }
 
 export class PipelineRunner {
   private readonly pipeline: Pipeline;
   private readonly opts: RunnerOptions;
+  private readonly startedAt: number;
+
   constructor(pipeline: Pipeline, opts: RunnerOptions = {}) {
     this.pipeline = pipeline;
     this.opts = opts;
+    this.startedAt = performance.now();
   }
 
   async run(ctx: GenContext, signal?: AbortSignal) {
@@ -73,15 +109,26 @@ export class PipelineRunner {
       const step = steps[i];
       this.assertWrites(step);
       if (signal?.aborted) throw new Error("Pipeline aborted");
+      const stepStart = performance.now();
       if (step.canRun && !step.canRun(ctx)) {
         const progress = ((i + 1) / total) * 100;
-        this.emitProgress(step.id, progress);
+        this.emitProgress(step.id, progress, {
+          stepIndex: i,
+          totalSteps: total,
+          durationMs: performance.now() - stepStart,
+          elapsedMs: performance.now() - this.startedAt,
+        });
         continue;
       }
       await step.run(ctx, signal);
       this.emitSnapshots(step, ctx);
       const progress = ((i + 1) / total) * 100;
-      this.emitProgress(step.id, progress);
+      this.emitProgress(step.id, progress, {
+        stepIndex: i,
+        totalSteps: total,
+        durationMs: performance.now() - stepStart,
+        elapsedMs: performance.now() - this.startedAt,
+      });
     }
   }
 
@@ -92,9 +139,15 @@ export class PipelineRunner {
       const step = steps[i];
       this.assertWrites(step);
       if (signal?.aborted) throw new Error("Pipeline aborted");
+      const stepStart = performance.now();
       if (step.canRun && !step.canRun(ctx)) {
         const progress = ((i + 1) / total) * 100;
-        this.emitProgress(step.id, progress);
+        this.emitProgress(step.id, progress, {
+          stepIndex: i,
+          totalSteps: total,
+          durationMs: performance.now() - stepStart,
+          elapsedMs: performance.now() - this.startedAt,
+        });
         continue;
       }
       const ret = step.run(ctx, signal);
@@ -102,7 +155,12 @@ export class PipelineRunner {
       void ret;
       this.emitSnapshots(step, ctx);
       const progress = ((i + 1) / total) * 100;
-      this.emitProgress(step.id, progress);
+      this.emitProgress(step.id, progress, {
+        stepIndex: i,
+        totalSteps: total,
+        durationMs: performance.now() - stepStart,
+        elapsedMs: performance.now() - this.startedAt,
+      });
     }
   }
 
@@ -126,15 +184,31 @@ export class PipelineRunner {
     return order;
   }
 
-  private emitProgress(stepId: string, progress: number) {
+  private emitProgress(
+    stepId: string,
+    progress: number,
+    meta?: {
+      stepIndex?: number;
+      totalSteps?: number;
+      durationMs?: number;
+      elapsedMs?: number;
+    },
+  ) {
     // Back-compat callback
     this.opts.onProgress?.(progress, stepId);
     // Structured event callback
-    const candidate: ProgressEvent = { stepId, progress } as ProgressEvent;
+    const candidate: ProgressEvent = {
+      stepId,
+      progress,
+      ...meta,
+    } as ProgressEvent;
     const parsed = ProgressEventSchema.safeParse(candidate);
     if (parsed.success) {
       this.opts.onProgressEvent?.(parsed.data);
-      GLOBAL_ON_PROGRESS_EVENT?.(parsed.data);
+
+      // Instance-specific handlers
+      const instanceHandlers = runnerHandlers.get(this);
+      instanceHandlers?.onProgressEvent?.(parsed.data);
     }
   }
 
@@ -143,71 +217,20 @@ export class PipelineRunner {
     this.opts.onSnapshot?.(step.id, ctx);
 
     const writes = step.io?.writes ?? [];
-    const snapshots: PipelineSnapshot[] = [];
 
-    if (writes.includes("grid.base")) {
-      const grid = ctx.grid.base;
-      const cells = grid.getRawData(); // Uint8Array of 0/1 already
-      const candidate = {
-        kind: "grid",
-        payload: {
-          id: step.id,
-          width: grid.width,
-          height: grid.height,
-          cells,
-          encoding: "raw",
-        },
-      } as const;
-      const parsed = PipelineSnapshotSchema.safeParse(candidate);
-      if (parsed.success) snapshots.push(parsed.data);
-    }
+    // Use handler registry for type-safe snapshot generation
+    const snapshots = snapshotHandlerRegistry.generateSnapshots(
+      step.id,
+      writes,
+      ctx,
+    );
 
-    if (writes.includes("graphs.rooms")) {
-      const rooms = ctx.graphs.rooms.map((r) => ({
-        x: r.x,
-        y: r.y,
-        width: r.width,
-        height: r.height,
-      }));
-      const candidate = {
-        kind: "rooms",
-        payload: { id: step.id, rooms },
-      } as const;
-      const parsed = PipelineSnapshotSchema.safeParse(candidate);
-      if (parsed.success) snapshots.push(parsed.data);
-    }
-
-    if (writes.includes("graphs.connections")) {
-      const rooms = ctx.graphs.rooms;
-      const connections = ctx.graphs.connections.map((c) => ({
-        from: Math.max(0, rooms.indexOf(c.from as RoomImpl)),
-        to: Math.max(0, rooms.indexOf(c.to as RoomImpl)),
-        path: c.path.map((p) => ({ x: p.x, y: p.y })),
-      }));
-      const candidate = {
-        kind: "connections",
-        payload: { id: step.id, connections },
-      } as const;
-      const parsed = PipelineSnapshotSchema.safeParse(candidate);
-      if (parsed.success) snapshots.push(parsed.data);
-    }
-
-    if (writes.includes("graphs.regions")) {
-      const regions = ctx.graphs.regions.map((r) => ({
-        id: r.id,
-        size: r.size,
-      }));
-      const candidate = {
-        kind: "regions",
-        payload: { id: step.id, regions },
-      } as const;
-      const parsed = PipelineSnapshotSchema.safeParse(candidate);
-      if (parsed.success) snapshots.push(parsed.data);
-    }
+    // Emit snapshots through configured handlers
+    const instanceHandlers = runnerHandlers.get(this);
 
     for (const snap of snapshots) {
       this.opts.onSnapshotEvent?.(snap);
-      GLOBAL_ON_SNAPSHOT_EVENT?.(snap);
+      instanceHandlers?.onSnapshotEvent?.(snap);
     }
   }
 
