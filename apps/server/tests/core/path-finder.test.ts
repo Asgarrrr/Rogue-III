@@ -257,6 +257,29 @@ describe("PathFinder", () => {
         expect(conn.path.length).toBeLessThanOrEqual(config.maxPathLength);
       }
     });
+
+    test("disallows diagonal corner cutting when adjacent walls block", () => {
+      const config: PathfindingConfig = {
+        ...DEFAULT_PATHFINDING_CONFIG,
+        allowDiagonal: true,
+        pathSmoothingPasses: 0,
+        tunnelWallCost: 1,
+      };
+      const pathFinder = new PathFinder(config);
+
+      const grid = createGridWithFloor(4, 4, [{ x: 0, y: 0, w: 4, h: 4 }]);
+      // Block one of the side-adjacent tiles to forbid diagonal cutting
+      grid.setCell(1, 2, CellType.WALL);
+
+      const rooms = [createRoom(0, 1, 1, 1, 1), createRoom(1, 2, 2, 1, 1)];
+
+      const connections = pathFinder.createConnections(rooms, grid);
+
+      expect(connections.length).toBe(1);
+      const path = connections[0].path;
+      expect(path.some((p) => p.x === 2 && p.y === 1)).toBeTrue(); // forces step around the wall
+      expect(path.some((p) => p.x === 1 && p.y === 2)).toBeFalse(); // wall should never be used
+    });
   });
 
   describe("Algorithm Correctness", () => {

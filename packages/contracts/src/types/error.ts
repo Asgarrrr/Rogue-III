@@ -13,6 +13,7 @@ export type DungeonErrorCode =
   | "SEED_ENCODE_FAILED"
   | "GENERATION_FAILED"
   | "GENERATION_TIMEOUT"
+  | "GENERATION_MEMORY_EXHAUSTED"
   | "ALGORITHM_NOT_FOUND"
   | "ROOM_PLACEMENT_FAILED"
   | "PATH_CONNECTION_FAILED";
@@ -94,6 +95,16 @@ export class DungeonError extends Error {
     details?: Record<string, unknown>,
   ): DungeonError {
     return new DungeonError("GENERATION_FAILED", message, details);
+  }
+
+  /**
+   * Create a memory exhaustion error.
+   */
+  static memoryExhausted(
+    message: string,
+    details?: Record<string, unknown>,
+  ): DungeonError {
+    return new DungeonError("GENERATION_MEMORY_EXHAUSTED", message, details);
   }
 
   /**

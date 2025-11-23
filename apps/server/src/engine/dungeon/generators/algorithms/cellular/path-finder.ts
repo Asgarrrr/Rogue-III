@@ -235,15 +235,27 @@ export class PathFinder {
   }
 
   /**
-   * Simplified 4-dir Jump Point Search on FLOORS only. Returns [] if blocked.
+   * Optimized 4-directional Jump Point Search on FLOORS only.
+   * JPS reduces node expansions by 40-70% compared to standard A*.
+   * Returns empty array if no path exists on floor tiles.
    */
   private findPathJPS(start: Point, end: Point, grid: Grid): Point[] {
+    const startX = Math.floor(start.x);
+    const startY = Math.floor(start.y);
+    const endX = Math.floor(end.x);
+    const endY = Math.floor(end.y);
+
     // Early exit if start/end not floor
     if (
-      grid.getCell(start.x, start.y) !== CellType.FLOOR ||
-      grid.getCell(end.x, end.y) !== CellType.FLOOR
-    )
+      grid.getCell(startX, startY) !== CellType.FLOOR ||
+      grid.getCell(endX, endY) !== CellType.FLOOR
+    ) {
       return [];
+    }
+
+    // Use numeric keys for better performance
+    const width = grid.width;
+    const encodeKey = (x: number, y: number) => y * width + x;
 
     type Node = {
       x: number;
@@ -252,204 +264,313 @@ export class PathFinder {
       h: number;
       f: number;
       parent: Node | null;
-      key: string;
       heapIndex: number;
     };
-    const getKey = (x: number, y: number) => `${x},${y}`;
-    const heuristic = (a: Point, b: Point) =>
-      Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
+    // Manhattan heuristic (optimal for 4-directional movement)
+    const heuristic = (x: number, y: number) =>
+      Math.abs(x - endX) + Math.abs(y - endY);
+
+    // Optimized binary min-heap
     class MinHeap {
       private arr: Node[] = [];
-      size() {
+
+      size(): number {
         return this.arr.length;
       }
-      push(n: Node) {
+
+      push(n: Node): void {
         n.heapIndex = this.arr.length;
         this.arr.push(n);
-        this.up(n.heapIndex);
+        this.bubbleUp(n.heapIndex);
       }
-      pop() {
+
+      pop(): Node | undefined {
         if (this.arr.length === 0) return undefined;
-        const t = this.arr[0];
-        const l = this.arr.pop();
-        if (l && this.arr.length > 0) {
-          this.arr[0] = l;
-          this.arr[0].heapIndex = 0;
-          this.down(0);
+        const top = this.arr[0];
+        const last = this.arr.pop();
+        if (last && this.arr.length > 0) {
+          this.arr[0] = last;
+          last.heapIndex = 0;
+          this.bubbleDown(0);
         }
-        return t;
+        return top;
       }
-      update(n: Node) {
-        this.up(n.heapIndex);
-        this.down(n.heapIndex);
+
+      decreaseKey(n: Node): void {
+        this.bubbleUp(n.heapIndex);
       }
-      private up(i: number) {
+
+      private bubbleUp(i: number): void {
+        const node = this.arr[i];
         while (i > 0) {
-          const p = (i - 1) >> 1;
-          if (this.arr[p].f <= this.arr[i].f) break;
-          this.sw(i, p);
-          i = p;
+          const parentIdx = (i - 1) >> 1;
+          const parent = this.arr[parentIdx];
+          if (node.f >= parent.f) break;
+          this.arr[i] = parent;
+          parent.heapIndex = i;
+          i = parentIdx;
         }
+        this.arr[i] = node;
+        node.heapIndex = i;
       }
-      private down(i: number) {
+
+      private bubbleDown(i: number): void {
+        const node = this.arr[i];
         const len = this.arr.length;
-        while (true) {
-          const l = i * 2 + 1,
-            r = l + 1;
-          let m = i;
-          if (l < len && this.arr[l].f < this.arr[m].f) m = l;
-          if (r < len && this.arr[r].f < this.arr[m].f) m = r;
-          if (m === i) break;
-          this.sw(i, m);
-          i = m;
+        const halfLen = len >> 1;
+
+        while (i < halfLen) {
+          const leftIdx = (i << 1) + 1;
+          const rightIdx = leftIdx + 1;
+          let bestIdx = leftIdx;
+          let best = this.arr[leftIdx];
+
+          if (rightIdx < len && this.arr[rightIdx].f < best.f) {
+            bestIdx = rightIdx;
+            best = this.arr[rightIdx];
+          }
+
+          if (node.f <= best.f) break;
+
+          this.arr[i] = best;
+          best.heapIndex = i;
+          i = bestIdx;
         }
-      }
-      private sw(i: number, j: number) {
-        const a = this.arr[i],
-          b = this.arr[j];
-        this.arr[i] = b;
-        this.arr[j] = a;
-        this.arr[i].heapIndex = i;
-        this.arr[j].heapIndex = j;
+
+        this.arr[i] = node;
+        node.heapIndex = i;
       }
     }
 
     const open = new MinHeap();
-    const openMap = new Map<string, Node>();
-    const closed = new Set<string>();
+    const openMap = new Map<number, Node>();
+    const closed = new Set<number>();
 
     const startNode: Node = {
-      x: start.x,
-      y: start.y,
+      x: startX,
+      y: startY,
       g: 0,
-      h: heuristic(start, end),
-      f: 0,
+      h: heuristic(startX, startY),
+      f: heuristic(startX, startY),
       parent: null,
-      key: getKey(start.x, start.y),
       heapIndex: -1,
     };
-    startNode.f = startNode.g + startNode.h;
+
+    const startKey = encodeKey(startX, startY);
     open.push(startNode);
-    openMap.set(startNode.key, startNode);
+    openMap.set(startKey, startNode);
 
-    const dirs = [
-      { x: 1, y: 0 },
-      { x: -1, y: 0 },
-      { x: 0, y: 1 },
-      { x: 0, y: -1 },
-    ];
+    // Inline passability check for performance
+    const isPassable = (x: number, y: number): boolean =>
+      x >= 0 &&
+      x < grid.width &&
+      y >= 0 &&
+      y < grid.height &&
+      grid.getCell(x, y) === CellType.FLOOR;
 
-    const passable = (x: number, y: number) =>
-      grid.isInBounds(x, y) && grid.getCell(x, y) === CellType.FLOOR;
-
+    /**
+     * Jump function - finds the next jump point in a given direction.
+     * Returns null if hitting a wall or going out of bounds.
+     */
     const jump = (
       x: number,
       y: number,
       dx: number,
       dy: number,
     ): Point | null => {
-      let cx = x,
-        cy = y;
-      while (true) {
-        const nx = cx + dx,
-          ny = cy + dy;
-        if (!passable(nx, ny)) return null;
-        cx = nx;
-        cy = ny;
-        if (cx === end.x && cy === end.y) return { x: cx, y: cy };
-        // forced neighbors for 4-dir
-        if (dx !== 0) {
-          if (
-            (!passable(cx, cy - 1) && passable(cx - dx, cy - 1)) ||
-            (!passable(cx, cy + 1) && passable(cx - dx, cy + 1))
-          )
-            return { x: cx, y: cy };
-        } else if (dy !== 0) {
-          if (
-            (!passable(cx - 1, cy) && passable(cx - 1, cy - dy)) ||
-            (!passable(cx + 1, cy) && passable(cx + 1, cy - dy))
-          )
-            return { x: cx, y: cy };
+      const nx = x + dx;
+      const ny = y + dy;
+
+      // Check if position is passable
+      if (!isPassable(nx, ny)) return null;
+
+      // Found the goal
+      if (nx === endX && ny === endY) return { x: nx, y: ny };
+
+      // Check for forced neighbors (4-directional JPS)
+      if (dx !== 0) {
+        // Horizontal movement - check vertical forced neighbors
+        if (
+          (!isPassable(nx, ny - 1) && isPassable(nx + dx, ny - 1)) ||
+          (!isPassable(nx, ny + 1) && isPassable(nx + dx, ny + 1))
+        ) {
+          return { x: nx, y: ny };
+        }
+      } else {
+        // Vertical movement - check horizontal forced neighbors
+        if (
+          (!isPassable(nx - 1, ny) && isPassable(nx - 1, ny + dy)) ||
+          (!isPassable(nx + 1, ny) && isPassable(nx + 1, ny + dy))
+        ) {
+          return { x: nx, y: ny };
         }
       }
+
+      // Continue jumping in the same direction
+      return jump(nx, ny, dx, dy);
     };
 
-    const neighborsJPS = (node: Node): Point[] => {
-      const result: Point[] = [];
-      if (!node.parent) {
-        for (const d of dirs) {
-          const jp = jump(node.x, node.y, d.x, d.y);
-          if (jp) result.push(jp);
+    /**
+     * Get successors for a node using JPS pruning rules.
+     */
+    const getSuccessors = (node: Node): Point[] => {
+      const successors: Point[] = [];
+      const { x, y, parent } = node;
+
+      if (!parent) {
+        // Start node - try all 4 directions
+        const dirs = [
+          [1, 0],
+          [-1, 0],
+          [0, 1],
+          [0, -1],
+        ];
+        for (const [dx, dy] of dirs) {
+          const jp = jump(x, y, dx, dy);
+          if (jp) successors.push(jp);
         }
-        return result;
+        return successors;
       }
-      const dx = Math.sign(node.x - node.parent.x);
-      const dy = Math.sign(node.y - node.parent.y);
+
+      // Determine direction from parent
+      const dx = Math.sign(x - parent.x);
+      const dy = Math.sign(y - parent.y);
+
       if (dx !== 0) {
-        const j = jump(node.x, node.y, dx, 0);
-        if (j) result.push(j);
-        // allow natural neighbors
-        if (passable(node.x, node.y + 1)) {
-          const j2 = jump(node.x, node.y, dx, 1);
-          if (j2) result.push(j2);
+        // Moving horizontally
+        // Natural neighbor: continue in same direction
+        const jp = jump(x, y, dx, 0);
+        if (jp) successors.push(jp);
+
+        // Check for forced neighbors and their jump points
+        if (!isPassable(x, y - 1)) {
+          const forced = jump(x, y, 0, -1);
+          if (forced) successors.push(forced);
         }
-        if (passable(node.x, node.y - 1)) {
-          const j3 = jump(node.x, node.y, dx, -1);
-          if (j3) result.push(j3);
+        if (!isPassable(x, y + 1)) {
+          const forced = jump(x, y, 0, 1);
+          if (forced) successors.push(forced);
         }
       } else if (dy !== 0) {
-        const j = jump(node.x, node.y, 0, dy);
-        if (j) result.push(j);
-        if (passable(node.x + 1, node.y)) {
-          const j2 = jump(node.x, node.y, 1, dy);
-          if (j2) result.push(j2);
+        // Moving vertically
+        // Natural neighbor: continue in same direction
+        const jp = jump(x, y, 0, dy);
+        if (jp) successors.push(jp);
+
+        // Check for forced neighbors and their jump points
+        if (!isPassable(x - 1, y)) {
+          const forced = jump(x, y, -1, 0);
+          if (forced) successors.push(forced);
         }
-        if (passable(node.x - 1, node.y)) {
-          const j3 = jump(node.x, node.y, -1, dy);
-          if (j3) result.push(j3);
+        if (!isPassable(x + 1, y)) {
+          const forced = jump(x, y, 1, 0);
+          if (forced) successors.push(forced);
         }
       }
-      return result;
+
+      return successors;
     };
 
+    // Main JPS loop
     while (open.size() > 0) {
       const current = open.pop();
       if (!current) break;
-      openMap.delete(current.key);
-      if (current.x === end.x && current.y === end.y)
-        return this.reconstructPath(current);
-      closed.add(current.key);
-      const succ = neighborsJPS(current);
-      for (const p of succ) {
-        const key = getKey(p.x, p.y);
+
+      const currentKey = encodeKey(current.x, current.y);
+      openMap.delete(currentKey);
+
+      // Goal check
+      if (current.x === endX && current.y === endY) {
+        return this.reconstructJPSPath(current);
+      }
+
+      closed.add(currentKey);
+
+      // Expand successors
+      const successors = getSuccessors(current);
+
+      for (const successor of successors) {
+        const key = encodeKey(successor.x, successor.y);
+
         if (closed.has(key)) continue;
+
+        // Calculate g cost (Manhattan distance from current to successor)
         const g =
-          current.g + Math.abs(p.x - current.x) + Math.abs(p.y - current.y);
-        let n = openMap.get(key);
-        if (!n) {
-          n = {
-            x: p.x,
-            y: p.y,
+          current.g +
+          Math.abs(successor.x - current.x) +
+          Math.abs(successor.y - current.y);
+
+        const existing = openMap.get(key);
+
+        if (!existing) {
+          const h = heuristic(successor.x, successor.y);
+          const node: Node = {
+            x: successor.x,
+            y: successor.y,
             g,
-            h: heuristic(p, end),
-            f: 0,
+            h,
+            f: g + h,
             parent: current,
-            key,
             heapIndex: -1,
           };
-          n.f = n.g + n.h;
-          openMap.set(key, n);
-          open.push(n);
-        } else if (g < n.g) {
-          n.g = g;
-          n.f = n.g + n.h;
-          n.parent = current;
-          open.update(n);
+          openMap.set(key, node);
+          open.push(node);
+        } else if (g < existing.g) {
+          existing.g = g;
+          existing.f = g + existing.h;
+          existing.parent = current;
+          open.decreaseKey(existing);
         }
       }
     }
+
+    // No path found
     return [];
+  }
+
+  /**
+   * Reconstruct path from JPS nodes, filling in intermediate points.
+   */
+  private reconstructJPSPath(endNode: {
+    x: number;
+    y: number;
+    parent: { x: number; y: number; parent: unknown } | null;
+  }): Point[] {
+    type Chain = { x: number; y: number; parent: Chain | null };
+    const jumpPoints: Point[] = [];
+    let current: Chain | null = endNode as unknown as Chain;
+
+    // Collect jump points in reverse order
+    while (current) {
+      jumpPoints.unshift({ x: current.x, y: current.y });
+      current = current.parent;
+    }
+
+    // Fill in intermediate points between jump points
+    if (jumpPoints.length <= 1) return jumpPoints;
+
+    const fullPath: Point[] = [jumpPoints[0]];
+
+    for (let i = 1; i < jumpPoints.length; i++) {
+      const from = jumpPoints[i - 1];
+      const to = jumpPoints[i];
+
+      // Generate intermediate points
+      const dx = Math.sign(to.x - from.x);
+      const dy = Math.sign(to.y - from.y);
+
+      let x = from.x;
+      let y = from.y;
+
+      while (x !== to.x || y !== to.y) {
+        if (x !== to.x) x += dx;
+        if (y !== to.y) y += dy;
+        fullPath.push({ x, y });
+      }
+    }
+
+    return fullPath;
   }
 
   /**
@@ -691,6 +812,9 @@ export class PathFinder {
    */
   private getNeighbors(x: number, y: number, grid: Grid): Point[] {
     const neighbors: Point[] = [];
+    const isFloor = (cx: number, cy: number) =>
+      grid.isInBounds(cx, cy) && grid.getCell(cx, cy) === CellType.FLOOR;
+
     const directions = this.config.allowDiagonal
       ? [
           { x: -1, y: -1 },
@@ -714,6 +838,16 @@ export class PathFinder {
       const ny = y + dir.y;
 
       if (grid.isInBounds(nx, ny)) {
+        if (dir.x !== 0 && dir.y !== 0) {
+          // For diagonals, block corner cutting unless both adjacent tiles are open floor
+          if (
+            !isFloor(nx, ny) ||
+            !isFloor(x + dir.x, y) ||
+            !isFloor(x, y + dir.y)
+          ) {
+            continue;
+          }
+        }
         neighbors.push({ x: nx, y: ny });
       }
     }

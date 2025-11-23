@@ -104,18 +104,60 @@ export const createApp = () =>
     .get("/api/ping", () => "pong")
     .get("/api/dungeon/preview", ({ query, set }) => {
       const params = (query ?? {}) as Record<string, string>;
-      const seed = params.seed ? Number(params.seed) : 1;
+
+      // Validate seed with robust number checking
+      const parsedSeed = params.seed ? Number(params.seed) : 1;
+      if (!Number.isFinite(parsedSeed) || Number.isNaN(parsedSeed)) {
+        set.status = 400;
+        set.headers = addCors();
+        return {
+          ok: false,
+          error: "SEED_INVALID",
+          message: "Seed must be a valid finite number",
+          details: { provided: params.seed },
+        };
+      }
+      const seed = parsedSeed;
+
       const shareCode =
         typeof params.shareCode === "string" && params.shareCode.length > 0
           ? params.shareCode
           : undefined;
+
+      // Validate numeric config parameters
+      const width = params.width ? Number(params.width) : undefined;
+      const height = params.height ? Number(params.height) : undefined;
+      const roomCount = params.roomCount ? Number(params.roomCount) : undefined;
+      const minRoom = params.minRoom ? Number(params.minRoom) : undefined;
+      const maxRoom = params.maxRoom ? Number(params.maxRoom) : undefined;
+
+      // Check for invalid numbers in config
+      if (
+        (width !== undefined && (!Number.isFinite(width) || width <= 0)) ||
+        (height !== undefined && (!Number.isFinite(height) || height <= 0)) ||
+        (roomCount !== undefined &&
+          (!Number.isFinite(roomCount) || roomCount < 0))
+      ) {
+        set.status = 400;
+        set.headers = addCors();
+        return {
+          ok: false,
+          error: "CONFIG_INVALID",
+          message: "Configuration parameters must be valid positive numbers",
+          details: { width, height, roomCount },
+        };
+      }
+
       const partial: ConfigInput = {
-        width: params.width ? Number(params.width) : undefined,
-        height: params.height ? Number(params.height) : undefined,
-        roomCount: params.roomCount ? Number(params.roomCount) : undefined,
+        width,
+        height,
+        roomCount,
         roomSizeRange:
-          params.minRoom && params.maxRoom
-            ? [Number(params.minRoom), Number(params.maxRoom)]
+          minRoom !== undefined &&
+          maxRoom !== undefined &&
+          Number.isFinite(minRoom) &&
+          Number.isFinite(maxRoom)
+            ? [minRoom, maxRoom]
             : undefined,
         algorithm:
           params.algorithm === "bsp" || params.algorithm === "cellular"
@@ -142,7 +184,7 @@ export const createApp = () =>
     })
     .post("/api/dungeon", ({ body, set }) => {
       const {
-        seed = 1,
+        seed: rawSeed = 1,
         shareCode,
         config,
       } = (body ?? {}) as {
@@ -156,6 +198,47 @@ export const createApp = () =>
           algorithm?: "cellular" | "bsp";
         };
       };
+
+      // Validate seed with robust number checking
+      const parsedSeed =
+        typeof rawSeed === "string" ? Number(rawSeed) : rawSeed;
+      if (
+        typeof parsedSeed === "number" &&
+        (!Number.isFinite(parsedSeed) || Number.isNaN(parsedSeed))
+      ) {
+        set.status = 400;
+        set.headers = addCors();
+        return {
+          ok: false,
+          error: "SEED_INVALID",
+          message: "Seed must be a valid finite number",
+          details: { provided: rawSeed },
+        };
+      }
+      const seed = parsedSeed;
+
+      // Validate config parameters if provided
+      if (config) {
+        const { width, height, roomCount, roomSizeRange } = config;
+        if (
+          (width !== undefined && (!Number.isFinite(width) || width <= 0)) ||
+          (height !== undefined && (!Number.isFinite(height) || height <= 0)) ||
+          (roomCount !== undefined &&
+            (!Number.isFinite(roomCount) || roomCount < 0)) ||
+          (roomSizeRange &&
+            (!Number.isFinite(roomSizeRange[0]) ||
+              !Number.isFinite(roomSizeRange[1])))
+        ) {
+          set.status = 400;
+          set.headers = addCors();
+          return {
+            ok: false,
+            error: "CONFIG_INVALID",
+            message: "Configuration parameters must be valid positive numbers",
+            details: { width, height, roomCount, roomSizeRange },
+          };
+        }
+      }
 
       const generation = generateDungeon(seed, shareCode, config);
 

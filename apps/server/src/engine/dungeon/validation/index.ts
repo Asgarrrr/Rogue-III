@@ -1,9 +1,7 @@
-export type {
-  InvariantValidationOptions,
-  InvariantValidationResult,
-} from "./invariants";
 export {
   assertDungeonInvariants,
   getInvariantSummary,
+  type InvariantValidationOptions,
+  type InvariantValidationResult,
   validateDungeonInvariants,
 } from "./invariants";

@@ -1,4 +1,4 @@
-import { CellType, Grid } from "../../../core/grid";
+import { CellType, type Grid, GridFactory } from "../../../core/grid";
 import type { SeededRandom } from "../../../core/random/seeded-random";
 
 /**
@@ -35,10 +35,17 @@ export class AutomatonRules {
   }
 
   /**
-   * Initialize grid with random noise based on wall probability
+   * Initialize grid with random noise based on wall probability.
+   * Throws DungeonError if memory allocation fails.
    */
   initializeGrid(width: number, height: number): Grid {
-    const grid = new Grid({ width, height }, CellType.FLOOR);
+    const gridResult = GridFactory.create({ width, height }, CellType.FLOOR);
+
+    if (gridResult.isErr()) {
+      throw gridResult.error;
+    }
+
+    const grid = gridResult.value;
 
     // Add border walls for stability
     this.addBorderWalls(grid);
