@@ -215,13 +215,13 @@ export class CellularGenerator extends DungeonGenerator {
     await this.yield(signal);
 
     // Phase 2: Analyze cavern structure (25%)
-    const caverns = this.analyzeCaverns(grid);
+    const { regions: caverns, labels } = this.analyzeCaverns(grid);
     this.throwIfAborted(signal);
     updateProgress(25);
     await this.yield(signal);
 
     // Phase 3: Place rooms in suitable caverns (25%)
-    const rooms = this.placeRooms(caverns, grid);
+    const rooms = this.placeRooms(caverns, grid, labels);
     this.throwIfAborted(signal);
     updateProgress(25);
     await this.yield(signal);
@@ -630,8 +630,8 @@ export class CellularGenerator extends DungeonGenerator {
    */
   getGenerationStats() {
     const grid = this.generateCellularGrid();
-    const caverns = this.analyzeCaverns(grid);
-    const stats = this.cavernAnalyzer.generateCavernStatistics(caverns);
+    const { regions } = this.analyzeCaverns(grid);
+    const stats = this.cavernAnalyzer.generateCavernStatistics(regions);
 
     return {
       gridSize: {

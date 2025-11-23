@@ -3,6 +3,7 @@ import {
   FloodFill,
   type Grid,
   type Region,
+  type Point,
   UnionFind,
 } from "../../../core/grid";
 
@@ -139,7 +140,7 @@ export class CavernAnalyzer {
         maxX = 0,
         minY = height,
         maxY = 0;
-      const points: Region["points"] = new Array(size);
+      const points: Point[] = [];
       const labelValue = regionId + 1; // reserve 0 for non-floor
 
       for (let i = 0; i < size; i++) {
@@ -150,7 +151,7 @@ export class CavernAnalyzer {
         if (x > maxX) maxX = x;
         if (y < minY) minY = y;
         if (y > maxY) maxY = y;
-        points[i] = { x, y };
+        points.push({ x, y });
         labels[idx] = labelValue;
       }
 
