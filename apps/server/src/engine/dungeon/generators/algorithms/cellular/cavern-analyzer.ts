@@ -2,8 +2,8 @@ import {
   CellType,
   FloodFill,
   type Grid,
-  type Region,
   type Point,
+  type Region,
   UnionFind,
 } from "../../../core/grid";
 
