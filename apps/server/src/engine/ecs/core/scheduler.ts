@@ -1,5 +1,11 @@
 import type { AnyComponentType, EmptyResources, SystemPhase } from "./types";
 
+type AnySystem = System<
+  readonly AnyComponentType[],
+  readonly AnyComponentType[],
+  any
+>;
+
 export interface SystemContext<
   Res extends Record<string, unknown> = EmptyResources,
 > {
@@ -39,7 +45,7 @@ export function before<const N extends readonly string[]>(
   return { before: names } as const;
 }
 
-function topoSortStable(systems: System[]): System[] {
+function topoSortStable(systems: AnySystem[]): AnySystem[] {
   // Kahn's algorithm with stable order by name within same in-degree
   const nameOrder = new Map<string, number>();
   for (let i = 0; i < systems.length; i++) nameOrder.set(systems[i].name, i);
@@ -85,11 +91,11 @@ function topoSortStable(systems: System[]): System[] {
   const byName = new Map(systems.map((s) => [s.name, s] as const));
   return out
     .map((n) => byName.get(n))
-    .filter((s): s is System => s !== undefined);
+    .filter((s): s is AnySystem => s !== undefined);
 }
 
 export class Scheduler {
-  private readonly phases: Map<SystemPhase, System[]> = new Map([
+  private readonly phases: Map<SystemPhase, AnySystem[]> = new Map([
     ["init", []],
     ["preUpdate", []],
     ["update", []],
@@ -97,7 +103,7 @@ export class Scheduler {
     ["lateUpdate", []],
   ]);
 
-  add(system: System): void {
+  add(system: AnySystem): void {
     const list = this.phases.get(system.phase);
     if (!list) throw new Error(`Unknown phase ${system.phase}`);
     list.push(system);
