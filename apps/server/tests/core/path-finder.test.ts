@@ -161,8 +161,17 @@ describe("PathFinder", () => {
       visited.add(rooms[0].id);
 
       while (queue.length > 0) {
-        const current = queue.shift()!;
-        for (const neighbor of adjacency.get(current)!) {
+        const current = queue.shift();
+        if (current === undefined) {
+          break;
+        }
+
+        const neighbors = adjacency.get(current);
+        if (!neighbors) {
+          continue;
+        }
+
+        for (const neighbor of neighbors) {
           if (!visited.has(neighbor)) {
             visited.add(neighbor);
             queue.push(neighbor);

@@ -1,14 +1,14 @@
 import type { ComponentStore } from "./component-store";
-import type { ComponentType, EntityId } from "./types";
+import type { AnyComponentType, ComponentType, EntityId } from "./types";
 import type { World } from "./world";
 
-type TupleOfComponents<With extends readonly ComponentType<any>[]> = {
+type TupleOfComponents<With extends readonly AnyComponentType[]> = {
   [I in keyof With]: With[I] extends ComponentType<infer C> ? C : never;
 };
 
 interface QueryTermsGeneric<
-  With extends readonly ComponentType<any>[],
-  Not extends readonly ComponentType<any>[] = [],
+  With extends readonly AnyComponentType[],
+  Not extends readonly AnyComponentType[] = [],
 > {
   with: With;
   not?: Not;
@@ -16,12 +16,12 @@ interface QueryTermsGeneric<
 }
 
 export class Query<
-  With extends readonly ComponentType<any>[],
-  Not extends readonly ComponentType<any>[] = [],
+  With extends readonly AnyComponentType[],
+  Not extends readonly AnyComponentType[] = [],
 > {
   private readonly world: World;
   private readonly withTypes: With;
-  private readonly notTypes: Not extends readonly ComponentType<any>[]
+  private readonly notTypes: Not extends readonly AnyComponentType[]
     ? Not
     : never;
   private readonly changedSinceTick?: number;
@@ -29,8 +29,9 @@ export class Query<
   constructor(world: World, terms: QueryTermsGeneric<With, Not>) {
     this.world = world;
     this.withTypes = terms.with;
-    this.notTypes = (terms.not ??
-      []) as Not extends readonly ComponentType<any>[] ? Not : never;
+    this.notTypes = (terms.not ?? []) as Not extends readonly AnyComponentType[]
+      ? Not
+      : never;
     this.changedSinceTick = terms.changedSince;
   }
 
@@ -96,8 +97,8 @@ export class Query<
 }
 
 export function query<
-  With extends readonly ComponentType<any>[],
-  Not extends readonly ComponentType<any>[] = [],
+  With extends readonly AnyComponentType[],
+  Not extends readonly AnyComponentType[] = [],
 >(world: World, terms: QueryTermsGeneric<With, Not>): Query<With, Not> {
   return new Query<With, Not>(world, terms);
 }

@@ -212,7 +212,9 @@ describe("FloodFill", () => {
       // Should find regions
       expect(regions.length).toBeGreaterThanOrEqual(1);
       // Each region should have positive size
-      regions.forEach((r) => expect(r.size).toBeGreaterThan(0));
+      for (const region of regions) {
+        expect(region.size).toBeGreaterThan(0);
+      }
     });
 
     test("uses 8-connectivity when diagonal is true", () => {
@@ -490,7 +492,9 @@ describe("FloodFill", () => {
       const regions = FloodFill.findRegions(grid);
 
       expect(regions).toHaveLength(100); // 10x10 checkerboard
-      regions.forEach((r) => expect(r.size).toBe(1));
+      for (const region of regions) {
+        expect(region.size).toBe(1);
+      }
     });
   });
 });

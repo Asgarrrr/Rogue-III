@@ -1,22 +1,19 @@
-import { ComponentRegistry } from "./component-registry";
 import { ComponentStore } from "./component-store";
 import { EntityManager } from "./entity";
 import { Resources } from "./resources";
 import type { ComponentKey, ComponentType, EntityId } from "./types";
 
-type ComponentStores = Map<ComponentKey, ComponentStore<any>>;
+type ComponentStores = Map<ComponentKey, ComponentStore<unknown>>;
 
 export class World {
   private readonly entities: EntityManager;
   private readonly components: ComponentStores;
-  private readonly registry: ComponentRegistry;
   readonly resources: Resources;
   private tickCounter: number;
 
   constructor(initialEntityCapacity: number = 2048) {
     this.entities = new EntityManager(initialEntityCapacity);
     this.components = new Map();
-    this.registry = new ComponentRegistry();
     this.resources = new Resources();
     this.tickCounter = 0;
   }

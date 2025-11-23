@@ -128,7 +128,10 @@ describe("Dungeon invariants", () => {
           );
           const dungeon = unwrap(dungeonResult);
           expect(dungeon.grid).toBeDefined();
-          const grid = Grid.fromBooleanGrid(dungeon.grid!);
+          if (!dungeon.grid) {
+            throw new Error("Dungeon grid is missing");
+          }
+          const grid = Grid.fromBooleanGrid(dungeon.grid);
 
           assertRoomsDoNotOverlap(dungeon.rooms);
           assertAllRoomsReachable(dungeon, grid);

@@ -109,7 +109,9 @@ describe("RoomPlacer", () => {
       makeRectRegion(1, 2, 2, 25, 25),
       makeRectRegion(2, 30, 10, 60, 35),
     ];
-    regions.forEach((region) => carveRegion(grid, region));
+    for (const region of regions) {
+      carveRegion(grid, region);
+    }
 
     const placer = new RoomPlacer(
       {

@@ -24,7 +24,7 @@ export class SpatialIndexResource {
 
   setBounds(width: number, height: number): void {
     const bounds: Bounds = { minX: 0, minY: 0, maxX: width, maxY: height };
-    (this.hash as any).setBounds(bounds);
+    this.hash.setBounds(bounds);
   }
 
   upsert(entity: EntityId, x: number, y: number): void {
@@ -57,14 +57,11 @@ export class SpatialIndexResource {
   }
 
   queryRadius(x: number, y: number, radius: number): EntityId[] {
-    const points = (this.hash as any).queryRadius(
-      { x, y },
-      radius,
-    ) as SpatialPoint[];
+    const points = this.hash.queryRadius({ x, y }, radius);
     return points.map((p) => p.entity);
   }
 
   stats() {
-    return (this.hash as any).getStats();
+    return this.hash.getStats();
   }
 }

@@ -1,14 +1,16 @@
-import type { ComponentType, SystemPhase } from "./types";
+import type { AnyComponentType, EmptyResources, SystemPhase } from "./types";
 
-export interface SystemContext<Res extends Record<string, unknown> = {}> {
+export interface SystemContext<
+  Res extends Record<string, unknown> = EmptyResources,
+> {
   worldTick: number;
   resources: Res;
 }
 
 export interface System<
-  _With extends readonly ComponentType<any>[] = readonly ComponentType<any>[],
-  _Not extends readonly ComponentType<any>[] = [],
-  Res extends Record<string, unknown> = {},
+  _With extends readonly AnyComponentType[] = readonly AnyComponentType[],
+  _Not extends readonly AnyComponentType[] = [],
+  Res extends Record<string, unknown> = EmptyResources,
 > {
   name: string;
   phase: SystemPhase;
@@ -18,9 +20,9 @@ export interface System<
 }
 
 export function defineSystem<
-  With extends readonly ComponentType<any>[],
-  Not extends readonly ComponentType<any>[] = [],
-  Res extends Record<string, unknown> = {},
+  With extends readonly AnyComponentType[],
+  Not extends readonly AnyComponentType[] = [],
+  Res extends Record<string, unknown> = EmptyResources,
 >(s: System<With, Not, Res>): System<With, Not, Res> {
   return s;
 }
@@ -60,11 +62,12 @@ function topoSortStable(systems: System[]): System[] {
 
   const queue: string[] = [];
   for (const [name, deg] of indegree) if (deg === 0) queue.push(name);
-  queue.sort((a, b) => nameOrder.get(a)! - nameOrder.get(b)!);
+  queue.sort((a, b) => (nameOrder.get(a) ?? 0) - (nameOrder.get(b) ?? 0));
 
   const out: string[] = [];
   while (queue.length) {
-    const n = queue.shift()!;
+    const n = queue.shift();
+    if (!n) break;
     out.push(n);
     for (const [k, deps] of afterMap) {
       if (!deps.has(n)) continue;
@@ -72,7 +75,7 @@ function topoSortStable(systems: System[]): System[] {
       indegree.set(k, d);
       if (d === 0) {
         queue.push(k);
-        queue.sort((a, b) => nameOrder.get(a)! - nameOrder.get(b)!);
+        queue.sort((a, b) => (nameOrder.get(a) ?? 0) - (nameOrder.get(b) ?? 0));
       }
     }
   }
@@ -80,7 +83,9 @@ function topoSortStable(systems: System[]): System[] {
   if (out.length !== systems.length)
     return systems.slice().sort((a, b) => a.name.localeCompare(b.name));
   const byName = new Map(systems.map((s) => [s.name, s] as const));
-  return out.map((n) => byName.get(n)!) as System[];
+  return out
+    .map((n) => byName.get(n))
+    .filter((s): s is System => s !== undefined);
 }
 
 export class Scheduler {
@@ -102,12 +107,13 @@ export class Scheduler {
     for (const [, list] of this.phases) list.length = 0;
   }
 
-  runPhase<Res extends Record<string, unknown> = {}>(
+  runPhase<Res extends Record<string, unknown> = EmptyResources>(
     phase: SystemPhase,
     ctx: SystemContext<Res>,
     world: unknown,
   ): void {
-    const systems = this.phases.get(phase)!;
+    const systems = this.phases.get(phase);
+    if (!systems) return;
     const ordered = topoSortStable(systems);
     for (const s of ordered) s.run(world, ctx);
   }
