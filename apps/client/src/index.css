@@ -11,7 +11,7 @@
   font-display: swap;
 }
 
-@base {
+@layer base {
   html,
   body {
     overscroll-behavior: none;

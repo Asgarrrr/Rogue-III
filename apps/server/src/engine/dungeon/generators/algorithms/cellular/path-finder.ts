@@ -272,8 +272,8 @@ export class PathFinder {
       pop() {
         if (this.arr.length === 0) return undefined;
         const t = this.arr[0];
-        const l = this.arr.pop()!;
-        if (this.arr.length > 0) {
+        const l = this.arr.pop();
+        if (l && this.arr.length > 0) {
           this.arr[0] = l;
           this.arr[0].heapIndex = 0;
           this.down(0);
@@ -414,7 +414,8 @@ export class PathFinder {
     };
 
     while (open.size() > 0) {
-      const current = open.pop()!;
+      const current = open.pop();
+      if (!current) break;
       openMap.delete(current.key);
       if (current.x === end.x && current.y === end.y)
         return this.reconstructPath(current);
@@ -480,8 +481,8 @@ export class PathFinder {
       pop(): Node | undefined {
         if (this.arr.length === 0) return undefined;
         const top = this.arr[0];
-        const last = this.arr.pop()!;
-        if (this.arr.length > 0) {
+        const last = this.arr.pop();
+        if (last && this.arr.length > 0) {
           this.arr[0] = last;
           this.arr[0].heapIndex = 0;
           this.bubbleDown(0);
@@ -546,7 +547,8 @@ export class PathFinder {
     openMap.set(startNode.key, startNode);
 
     while (openHeap.size() > 0) {
-      const current = openHeap.pop()!;
+      const current = openHeap.pop();
+      if (!current) break;
       openMap.delete(current.key);
 
       // Check if we reached the goal
