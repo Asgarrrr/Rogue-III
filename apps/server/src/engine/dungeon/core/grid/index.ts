@@ -10,6 +10,7 @@
  */
 
 export * from "./flood-fill";
+export * from "./grid-factory";
 export * from "./grid";
 export * from "./grid-factory";
 export * from "./object-pool";
