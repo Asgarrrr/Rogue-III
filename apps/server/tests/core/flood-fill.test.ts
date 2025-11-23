@@ -1,5 +1,5 @@
-import { describe, test, expect } from "bun:test";
-import { Grid, CellType, FloodFill } from "../../src/engine/dungeon/core/grid";
+import { describe, expect, test } from "bun:test";
+import { CellType, FloodFill, Grid } from "../../src/engine/dungeon/core/grid";
 
 describe("FloodFill", () => {
   describe("scanlineFill()", () => {
@@ -89,12 +89,16 @@ describe("FloodFill", () => {
 
       // Without diagonal - not connected
       const gridCopy1 = grid.clone();
-      const points4 = FloodFill.standardFill(gridCopy1, 0, 0, { diagonal: false });
+      const points4 = FloodFill.standardFill(gridCopy1, 0, 0, {
+        diagonal: false,
+      });
       expect(points4).toHaveLength(1);
 
       // With diagonal - still not connected (no diagonal path)
       const gridCopy2 = grid.clone();
-      const points8 = FloodFill.standardFill(gridCopy2, 0, 0, { diagonal: true });
+      const points8 = FloodFill.standardFill(gridCopy2, 0, 0, {
+        diagonal: true,
+      });
       expect(points8).toHaveLength(1);
     });
 
@@ -168,7 +172,7 @@ describe("FloodFill", () => {
 
       const regions = FloodFill.findRegions(grid);
 
-      const ids = regions.map(r => r.id);
+      const ids = regions.map((r) => r.id);
       expect(new Set(ids).size).toBe(3);
     });
 
@@ -208,7 +212,9 @@ describe("FloodFill", () => {
       // Should find regions
       expect(regions.length).toBeGreaterThanOrEqual(1);
       // Each region should have positive size
-      regions.forEach(r => expect(r.size).toBeGreaterThan(0));
+      for (const region of regions) {
+        expect(region.size).toBeGreaterThan(0);
+      }
     });
 
     test("uses 8-connectivity when diagonal is true", () => {
@@ -257,7 +263,7 @@ describe("FloodFill", () => {
       const largest = FloodFill.findLargestRegion(grid);
 
       expect(largest).not.toBeNull();
-      expect(largest!.size).toBe(5);
+      expect(largest?.size).toBe(5);
     });
 
     test("returns null for empty grid", () => {
@@ -272,7 +278,7 @@ describe("FloodFill", () => {
 
       expect(largest).not.toBeNull();
       // Should find at least one region
-      expect(largest!.size).toBeGreaterThan(0);
+      expect(largest?.size).toBeGreaterThan(0);
     });
 
     test("handles tie by returning first largest", () => {
@@ -285,7 +291,7 @@ describe("FloodFill", () => {
       const largest = FloodFill.findLargestRegion(grid);
 
       expect(largest).not.toBeNull();
-      expect(largest!.size).toBe(2);
+      expect(largest?.size).toBe(2);
     });
 
     test("uses diagonal connectivity when specified", () => {
@@ -298,11 +304,11 @@ describe("FloodFill", () => {
 
       // Without diagonal
       const largest4 = FloodFill.findLargestRegion(grid, CellType.FLOOR, false);
-      expect(largest4!.size).toBe(1);
+      expect(largest4?.size).toBe(1);
 
       // With diagonal
       const largest8 = FloodFill.findLargestRegion(grid, CellType.FLOOR, true);
-      expect(largest8!.size).toBe(4);
+      expect(largest8?.size).toBe(4);
     });
   });
 
@@ -314,7 +320,7 @@ describe("FloodFill", () => {
       const connectedAdjacent = FloodFill.areConnected(
         grid,
         { x: 0, y: 0 },
-        { x: 1, y: 0 }
+        { x: 1, y: 0 },
       );
       expect(connectedAdjacent).toBe(true);
 
@@ -322,7 +328,7 @@ describe("FloodFill", () => {
       const connectedSame = FloodFill.areConnected(
         grid,
         { x: 2, y: 2 },
-        { x: 2, y: 2 }
+        { x: 2, y: 2 },
       );
       expect(connectedSame).toBe(true);
     });
@@ -335,7 +341,7 @@ describe("FloodFill", () => {
       const connected = FloodFill.areConnected(
         grid,
         { x: 0, y: 0 },
-        { x: 4, y: 4 }
+        { x: 4, y: 4 },
       );
 
       expect(connected).toBe(false);
@@ -348,7 +354,7 @@ describe("FloodFill", () => {
       const connected = FloodFill.areConnected(
         grid,
         { x: 0, y: 0 },
-        { x: 4, y: 4 }
+        { x: 4, y: 4 },
       );
 
       expect(connected).toBe(false);
@@ -361,7 +367,7 @@ describe("FloodFill", () => {
       const connected = FloodFill.areConnected(
         grid,
         { x: 0, y: 0 },
-        { x: 4, y: 4 }
+        { x: 4, y: 4 },
       );
 
       expect(connected).toBe(false);
@@ -373,7 +379,7 @@ describe("FloodFill", () => {
       const connected = FloodFill.areConnected(
         grid,
         { x: 2, y: 2 },
-        { x: 2, y: 2 }
+        { x: 2, y: 2 },
       );
 
       expect(connected).toBe(true);
@@ -391,7 +397,7 @@ describe("FloodFill", () => {
         { x: 0, y: 0 },
         { x: 2, y: 2 },
         CellType.FLOOR,
-        false
+        false,
       );
       expect(connected4).toBe(false);
 
@@ -401,7 +407,7 @@ describe("FloodFill", () => {
         { x: 0, y: 0 },
         { x: 2, y: 2 },
         CellType.FLOOR,
-        true
+        true,
       );
       expect(connected8).toBe(true);
     });
@@ -410,24 +416,28 @@ describe("FloodFill", () => {
       const grid = new Grid({ width: 7, height: 7 }, CellType.WALL);
       // Create maze-like path
       const path = [
-        [1, 0], [1, 1], [1, 2], [2, 2], [3, 2],
-        [3, 3], [3, 4], [4, 4], [5, 4], [5, 5]
+        [1, 0],
+        [1, 1],
+        [1, 2],
+        [2, 2],
+        [3, 2],
+        [3, 3],
+        [3, 4],
+        [4, 4],
+        [5, 4],
+        [5, 5],
       ];
       for (const [x, y] of path) {
         grid.setCell(x, y, CellType.FLOOR);
       }
 
-      expect(FloodFill.areConnected(
-        grid,
-        { x: 1, y: 0 },
-        { x: 5, y: 5 }
-      )).toBe(true);
+      expect(FloodFill.areConnected(grid, { x: 1, y: 0 }, { x: 5, y: 5 })).toBe(
+        true,
+      );
 
-      expect(FloodFill.areConnected(
-        grid,
-        { x: 1, y: 0 },
-        { x: 0, y: 0 }
-      )).toBe(false);
+      expect(FloodFill.areConnected(grid, { x: 1, y: 0 }, { x: 0, y: 0 })).toBe(
+        false,
+      );
     });
 
     test("does not modify grid", () => {
@@ -453,7 +463,7 @@ describe("FloodFill", () => {
       expect(regions[0].size).toBe(1);
 
       const largest = FloodFill.findLargestRegion(grid);
-      expect(largest!.size).toBe(1);
+      expect(largest?.size).toBe(1);
     });
 
     test("handles large grid efficiently", () => {
@@ -482,7 +492,9 @@ describe("FloodFill", () => {
       const regions = FloodFill.findRegions(grid);
 
       expect(regions).toHaveLength(100); // 10x10 checkerboard
-      regions.forEach(r => expect(r.size).toBe(1));
+      for (const region of regions) {
+        expect(region.size).toBe(1);
+      }
     });
   });
 });

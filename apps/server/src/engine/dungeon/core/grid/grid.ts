@@ -396,5 +396,3 @@ export class Grid {
     return this.data;
   }
 }
-
-

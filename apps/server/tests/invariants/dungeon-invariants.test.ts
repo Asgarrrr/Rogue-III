@@ -3,7 +3,11 @@ import { DungeonManager } from "../../src/engine/dungeon";
 import { CellType, Grid } from "../../src/engine/dungeon/core/grid";
 import type { Dungeon, Room } from "../../src/engine/dungeon/entities";
 
-function unwrap<T>(result: { isErr(): boolean; error?: unknown; value?: T }): T {
+function unwrap<T>(result: {
+  isErr(): boolean;
+  error?: unknown;
+  value?: T;
+}): T {
   if (result.isErr()) {
     throw result.error;
   }
@@ -118,10 +122,16 @@ describe("Dungeon invariants", () => {
     describe(`${algorithm} invariants`, () => {
       for (const seed of seeds) {
         test(`rooms non-overlapping and reachable (seed ${seed})`, () => {
-          const dungeonResult = DungeonManager.generateFromSeedSync(seed, config);
+          const dungeonResult = DungeonManager.generateFromSeedSync(
+            seed,
+            config,
+          );
           const dungeon = unwrap(dungeonResult);
           expect(dungeon.grid).toBeDefined();
-          const grid = Grid.fromBooleanGrid(dungeon.grid!);
+          if (!dungeon.grid) {
+            throw new Error("Dungeon grid is missing");
+          }
+          const grid = Grid.fromBooleanGrid(dungeon.grid);
 
           assertRoomsDoNotOverlap(dungeon.rooms);
           assertAllRoomsReachable(dungeon, grid);
@@ -136,7 +146,10 @@ describe("Dungeon invariants", () => {
     const seed = seeds[0];
 
     const sync = unwrap(DungeonManager.generateFromSeedSync(seed, config));
-    const asyncResult = await DungeonManager.generateFromSeedAsync(seed, config);
+    const asyncResult = await DungeonManager.generateFromSeedAsync(
+      seed,
+      config,
+    );
     const asyncDungeon = unwrap(asyncResult);
 
     expect(asyncDungeon.checksum).toBe(sync.checksum);

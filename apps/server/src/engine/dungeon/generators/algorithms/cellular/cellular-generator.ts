@@ -133,6 +133,7 @@ export class CellularGenerator extends DungeonGenerator {
    */
   async generateAsync(
     onProgress?: (progress: number) => void,
+    signal?: AbortSignal,
   ): Promise<DungeonImpl> {
     let currentProgress = 0;
 
@@ -143,34 +144,40 @@ export class CellularGenerator extends DungeonGenerator {
 
     // Start with initial progress report
     onProgress?.(0);
+    this.throwIfAborted(signal);
 
     // Phase 1: Generate and evolve cellular grid (30%)
     const grid = this.generateCellularGrid();
+    this.throwIfAborted(signal);
     updateProgress(30);
-    await this.yield();
+    await this.yield(signal);
 
     // Phase 2: Analyze cavern structure (25%)
     const caverns = this.analyzeCaverns(grid);
+    this.throwIfAborted(signal);
     updateProgress(25);
-    await this.yield();
+    await this.yield(signal);
 
     // Phase 3: Place rooms in suitable caverns (25%)
     const rooms = this.placeRooms(caverns, grid);
+    this.throwIfAborted(signal);
     updateProgress(25);
-    await this.yield();
+    await this.yield(signal);
 
     // Phase 4: Create connections between rooms (15%)
     const connections = this.createConnections(rooms, grid);
+    this.throwIfAborted(signal);
     updateProgress(10);
-    await this.yield();
+    await this.yield(signal);
 
     // Phase 4.5: Carve rooms and paths into the grid for navigation (5%)
     this.integrateRoomsAndPathsIntoGrid(rooms, connections, grid);
     updateProgress(5);
-    await this.yield();
+    await this.yield(signal);
 
     // Phase 5: Generate final dungeon (5%)
     const checksum = this.calculateChecksum(rooms, connections);
+    this.throwIfAborted(signal);
     const dungeon = new DungeonImpl({
       rooms,
       connections,
@@ -180,6 +187,7 @@ export class CellularGenerator extends DungeonGenerator {
       grid: grid.toBooleanGrid(),
     });
     updateProgress(5);
+    this.throwIfAborted(signal);
 
     return dungeon;
   }
@@ -514,13 +522,6 @@ export class CellularGenerator extends DungeonGenerator {
       hash = (hash * 33) ^ char;
     }
     return hash;
-  }
-
-  /**
-   * Yield control to prevent blocking the event loop
-   */
-  private async yield(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 0));
   }
 
   /**

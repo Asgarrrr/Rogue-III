@@ -24,6 +24,13 @@ export class SpatialHash<T> {
   }
 
   /**
+   * Get current bounds
+   */
+  getBounds(): Bounds {
+    return this.bounds;
+  }
+
+  /**
    * Encode cell coordinates as a single number for O(1) hashing
    * Supports cell coordinates up to ±32767
    */
@@ -73,7 +80,7 @@ export class SpatialHash<T> {
     if (!this.cells.has(key)) {
       this.cells.set(key, []);
     }
-    this.cells.get(key)!.push(object);
+    this.cells.get(key)?.push(object);
   }
 
   /**
@@ -91,7 +98,7 @@ export class SpatialHash<T> {
       if (!this.cells.has(key)) {
         this.cells.set(key, []);
       }
-      this.cells.get(key)!.push(object);
+      this.cells.get(key)?.push(object);
     }
   }
 
@@ -210,5 +217,3 @@ export class SpatialHash<T> {
     };
   }
 }
-
-

@@ -4,5 +4,10 @@
  * This file previously contained unused error classes.
  * All error handling now uses the unified DungeonError from contracts.
  */
-export { DungeonError, type DungeonErrorCode } from "@rogue/contracts";
-export { Result, Ok, Err } from "@rogue/contracts";
+export {
+  DungeonError,
+  type DungeonErrorCode,
+  Err,
+  Ok,
+  Result,
+} from "@rogue/contracts";

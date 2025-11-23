@@ -29,7 +29,10 @@ export const SeedPartsSchema = z.tuple([
   NonNegativeIntSchema, // rooms
   NonNegativeIntSchema, // connections
   NonNegativeIntSchema, // details
-  z.number().int().positive({ message: "Timestamp must be positive" }), // timestamp can exceed uint32
+  z
+    .number()
+    .int()
+    .positive({ message: "Timestamp must be positive" }), // timestamp can exceed uint32
   z
     .number()
     .int()

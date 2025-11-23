@@ -3,7 +3,7 @@ import {
   type ValidatedDungeonConfig,
 } from "../schemas/dungeon";
 import type { DungeonConfig } from "../types/dungeon";
-import { Result, Ok, Err } from "../types/result";
+import { Err, Ok, type Result } from "../types/result";
 
 export type BuildConfigInput = Partial<DungeonConfig> & {
   algorithm?: "cellular" | "bsp";

@@ -2,33 +2,35 @@
 
 /* Departure Mono Font Face */
 @font-face {
-  font-family: 'Departure Mono';
-  src: url('./fonts/departure-mono/DepartureMono-Regular.woff2') format('woff2'),
-       url('./fonts/departure-mono/DepartureMono-Regular.woff') format('woff');
+  font-family: "Departure Mono";
+  src:
+    url("./fonts/departure-mono/DepartureMono-Regular.woff2") format("woff2"),
+    url("./fonts/departure-mono/DepartureMono-Regular.woff") format("woff");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
-@base {
-  html, body {
+@layer base {
+  html,
+  body {
     overscroll-behavior: none;
   }
 }
 
 @theme {
   --color-abyss: oklch(0.215 0.032 355.25);
-
 }
 
 @layer utilities {
   .font-departure-mono {
-    font-family: 'Departure Mono', 'Courier New', Courier, monospace;
+    font-family: "Departure Mono", "Courier New", Courier, monospace;
   }
 }
 
 :root {
-  font-family: "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas,
+  font-family:
+    "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular", Menlo, Consolas,
     "Liberation Mono", monospace;
   line-height: 1.4;
   font-weight: 400;
@@ -47,9 +49,9 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at 20% 20%, #1b1f2a 0, transparent 30%),
-    radial-gradient(circle at 80% 0%, #1a1f2c 0, transparent 25%),
-    #0f1115;
+  background:
+    radial-gradient(circle at 20% 20%, #1b1f2a 0, transparent 30%),
+    radial-gradient(circle at 80% 0%, #1a1f2c 0, transparent 25%), #0f1115;
   color: inherit;
 }
 

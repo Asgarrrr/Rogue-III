@@ -14,8 +14,8 @@ const DOUBLE_DENOMINATOR = 0x1fffffffffffffn; // 2^53 - 1, max safe mantissa
 
 function splitMix64(seed: bigint): bigint {
   let z = (seed + 0x9e3779b97f4a7c15n) & UINT64_MASK;
-  z = (z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n & UINT64_MASK;
-  z = (z ^ (z >> 27n)) * 0x94d049bb133111ebn & UINT64_MASK;
+  z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & UINT64_MASK;
+  z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & UINT64_MASK;
   return z ^ (z >> 31n);
 }
 

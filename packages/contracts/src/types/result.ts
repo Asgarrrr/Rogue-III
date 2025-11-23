@@ -36,14 +36,20 @@ export class Result<T, E> {
   /**
    * Create a Result from a nullable value.
    */
-  static fromNullable<T, E>(value: T | null | undefined, error: E): Result<T, E> {
+  static fromNullable<T, E>(
+    value: T | null | undefined,
+    error: E,
+  ): Result<T, E> {
     return value != null ? Result.ok(value) : Result.err(error);
   }
 
   /**
    * Create a Result from a function that might throw.
    */
-  static fromThrowable<T, E = Error>(fn: () => T, onError?: (e: unknown) => E): Result<T, E> {
+  static fromThrowable<T, E = Error>(
+    fn: () => T,
+    onError?: (e: unknown) => E,
+  ): Result<T, E> {
     try {
       return Result.ok(fn());
     } catch (e) {

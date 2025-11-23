@@ -1,8 +1,8 @@
-import { describe, test, expect, beforeEach } from "bun:test";
+import { beforeEach, describe, expect, test } from "bun:test";
 import { DungeonManager } from "../src/engine/dungeon";
-import { CellularGenerator } from "../src/engine/dungeon/generators/algorithms/cellular";
 import { SeededRandom } from "../src/engine/dungeon/core/random/seeded-random";
-import type { Dungeon } from "@rogue/contracts";
+import type { Dungeon } from "../src/engine/dungeon/entities";
+import { CellularGenerator } from "../src/engine/dungeon/generators/algorithms/cellular";
 
 // Test constants
 const TEST_SEED = 123456789;
@@ -27,7 +27,11 @@ const largeConfig = {
 };
 
 // Helper to unwrap Result or throw
-function unwrap<T>(result: { isErr(): boolean; error?: unknown; value?: T }): T {
+function unwrap<T>(result: {
+  isErr(): boolean;
+  error?: unknown;
+  value?: T;
+}): T {
   if (result.isErr()) {
     throw result.error;
   }
@@ -46,7 +50,10 @@ describe("Dungeon Generation Determinism Suite", () => {
   describe("Core Determinism", () => {
     test("should produce identical results across multiple generations", () => {
       const results = Array.from({ length: DETERMINISM_ITERATIONS }, (_, i) => {
-        const result = DungeonManager.generateFromSeedSync(TEST_SEED, baseConfig);
+        const result = DungeonManager.generateFromSeedSync(
+          TEST_SEED,
+          baseConfig,
+        );
         const dungeon = unwrap(result);
         return {
           checksum: dungeon.checksum,
@@ -66,7 +73,9 @@ describe("Dungeon Generation Determinism Suite", () => {
       // All structural properties should be identical
       results.forEach((result) => {
         expect(result.roomCount).toBe(referenceDungeon.rooms.length);
-        expect(result.connectionCount).toBe(referenceDungeon.connections.length);
+        expect(result.connectionCount).toBe(
+          referenceDungeon.connections.length,
+        );
       });
     });
 
@@ -98,18 +107,23 @@ describe("Dungeon Generation Determinism Suite", () => {
 
   describe("Async vs Sync Consistency", () => {
     test("should produce identical results for sync and async generation", async () => {
-      const syncResult = DungeonManager.generateFromSeedSync(TEST_SEED, baseConfig);
+      const syncResult = DungeonManager.generateFromSeedSync(
+        TEST_SEED,
+        baseConfig,
+      );
       const syncDungeon = unwrap(syncResult);
 
       const asyncResult = await DungeonManager.generateFromSeedAsync(
         TEST_SEED,
-        baseConfig
+        baseConfig,
       );
       const asyncDungeon = unwrap(asyncResult);
 
       expect(asyncDungeon.checksum).toBe(syncDungeon.checksum);
       expect(asyncDungeon.rooms.length).toBe(syncDungeon.rooms.length);
-      expect(asyncDungeon.connections.length).toBe(syncDungeon.connections.length);
+      expect(asyncDungeon.connections.length).toBe(
+        syncDungeon.connections.length,
+      );
     });
 
     test("should provide proper progress updates during async generation", async () => {
@@ -122,7 +136,7 @@ describe("Dungeon Generation Determinism Suite", () => {
         (progress) => {
           progressUpdates.push(progress);
           updateCount++;
-        }
+        },
       );
       const dungeon = unwrap(result);
 
@@ -133,7 +147,9 @@ describe("Dungeon Generation Determinism Suite", () => {
 
       // Progress should be monotonically increasing
       for (let i = 1; i < progressUpdates.length; i++) {
-        expect(progressUpdates[i]).toBeGreaterThanOrEqual(progressUpdates[i - 1]);
+        expect(progressUpdates[i]).toBeGreaterThanOrEqual(
+          progressUpdates[i - 1],
+        );
       }
 
       // Result should still be valid
@@ -207,7 +223,10 @@ describe("Dungeon Generation Determinism Suite", () => {
 
       for (let i = 0; i < PERFORMANCE_ITERATIONS; i++) {
         const start = performance.now();
-        const result = DungeonManager.generateFromSeedSync(TEST_SEED, baseConfig);
+        const result = DungeonManager.generateFromSeedSync(
+          TEST_SEED,
+          baseConfig,
+        );
         unwrap(result);
         const end = performance.now();
         times.push(end - start);
@@ -215,7 +234,7 @@ describe("Dungeon Generation Determinism Suite", () => {
 
       const avgTime = times.reduce((a, b) => a + b, 0) / times.length;
       const variance =
-        times.reduce((sum, time) => sum + Math.pow(time - avgTime, 2), 0) /
+        times.reduce((sum, time) => sum + (time - avgTime) ** 2, 0) /
         times.length;
       const stdDev = Math.sqrt(variance);
 
@@ -224,7 +243,10 @@ describe("Dungeon Generation Determinism Suite", () => {
     });
 
     test("should scale reasonably with dungeon size", () => {
-      const smallResult = DungeonManager.generateFromSeedSync(TEST_SEED, baseConfig);
+      const smallResult = DungeonManager.generateFromSeedSync(
+        TEST_SEED,
+        baseConfig,
+      );
       const smallDungeon = unwrap(smallResult);
 
       const mediumResult = DungeonManager.generateFromSeedSync(TEST_SEED, {
@@ -235,7 +257,10 @@ describe("Dungeon Generation Determinism Suite", () => {
       });
       const mediumDungeon = unwrap(mediumResult);
 
-      const largeResult = DungeonManager.generateFromSeedSync(TEST_SEED, largeConfig);
+      const largeResult = DungeonManager.generateFromSeedSync(
+        TEST_SEED,
+        largeConfig,
+      );
       const largeDungeon = unwrap(largeResult);
 
       // All dungeons should be valid
@@ -262,11 +287,15 @@ describe("Dungeon Generation Determinism Suite", () => {
       // Generate a dungeon with a random seed
       const rng = new SeededRandom(TEST_SEED);
       const randomSeed = rng.range(100000, 999999);
-      const originalResult = DungeonManager.generateFromSeedSync(randomSeed, baseConfig);
+      const originalResult = DungeonManager.generateFromSeedSync(
+        randomSeed,
+        baseConfig,
+      );
       const originalDungeon = unwrap(originalResult);
 
       // Create a share code from the dungeon
-      const shareCodeResult = DungeonManager.getDungeonShareCode(originalDungeon);
+      const shareCodeResult =
+        DungeonManager.getDungeonShareCode(originalDungeon);
       const shareCode = unwrap(shareCodeResult);
 
       // Verify that the code is valid
@@ -275,7 +304,10 @@ describe("Dungeon Generation Determinism Suite", () => {
       expect(shareCode.length).toBeGreaterThan(0);
 
       // Recreate the dungeon from the code
-      const regeneratedResult = DungeonManager.regenerateFromCode(shareCode, baseConfig);
+      const regeneratedResult = DungeonManager.regenerateFromCode(
+        shareCode,
+        baseConfig,
+      );
       const regeneratedDungeon = unwrap(regeneratedResult);
 
       // Verify that regeneration worked
@@ -284,14 +316,24 @@ describe("Dungeon Generation Determinism Suite", () => {
       // Verify that all elements are identical
       expect(regeneratedDungeon.checksum).toBe(originalDungeon.checksum);
       expect(regeneratedDungeon.config).toEqual(originalDungeon.config);
-      expect(regeneratedDungeon.seeds.primary).toBe(originalDungeon.seeds.primary);
-      expect(regeneratedDungeon.seeds.layout).toBe(originalDungeon.seeds.layout);
+      expect(regeneratedDungeon.seeds.primary).toBe(
+        originalDungeon.seeds.primary,
+      );
+      expect(regeneratedDungeon.seeds.layout).toBe(
+        originalDungeon.seeds.layout,
+      );
       expect(regeneratedDungeon.seeds.rooms).toBe(originalDungeon.seeds.rooms);
-      expect(regeneratedDungeon.seeds.connections).toBe(originalDungeon.seeds.connections);
-      expect(regeneratedDungeon.seeds.details).toBe(originalDungeon.seeds.details);
+      expect(regeneratedDungeon.seeds.connections).toBe(
+        originalDungeon.seeds.connections,
+      );
+      expect(regeneratedDungeon.seeds.details).toBe(
+        originalDungeon.seeds.details,
+      );
 
       // Verify room structure
-      expect(regeneratedDungeon.rooms.length).toBe(originalDungeon.rooms.length);
+      expect(regeneratedDungeon.rooms.length).toBe(
+        originalDungeon.rooms.length,
+      );
       originalDungeon.rooms.forEach((originalRoom, index) => {
         const regenRoom = regeneratedDungeon.rooms[index];
         expect(regenRoom.x).toBe(originalRoom.x);
@@ -302,7 +344,9 @@ describe("Dungeon Generation Determinism Suite", () => {
       });
 
       // Verify connections
-      expect(regeneratedDungeon.connections.length).toBe(originalDungeon.connections.length);
+      expect(regeneratedDungeon.connections.length).toBe(
+        originalDungeon.connections.length,
+      );
       originalDungeon.connections.forEach((originalConn, index) => {
         const regenConn = regeneratedDungeon.connections[index];
         expect(regenConn.from).toEqual(originalConn.from);
@@ -326,20 +370,28 @@ describe("Dungeon Generation Determinism Suite", () => {
 
       seeds.forEach((seed) => {
         // Generate the original dungeon
-        const originalResult = DungeonManager.generateFromSeedSync(seed, baseConfig);
+        const originalResult = DungeonManager.generateFromSeedSync(
+          seed,
+          baseConfig,
+        );
         const original = unwrap(originalResult);
 
         // Serialize and deserialize
         const shareCodeResult = DungeonManager.getDungeonShareCode(original);
         const shareCode = unwrap(shareCodeResult);
-        const regeneratedResult = DungeonManager.regenerateFromCode(shareCode, baseConfig);
+        const regeneratedResult = DungeonManager.regenerateFromCode(
+          shareCode,
+          baseConfig,
+        );
         const regenerated = unwrap(regeneratedResult);
 
         // Verify consistency
         expect(regenerated).toBeDefined();
         expect(regenerated.checksum).toBe(original.checksum);
         expect(regenerated.rooms.length).toBe(original.rooms.length);
-        expect(regenerated.connections.length).toBe(original.connections.length);
+        expect(regenerated.connections.length).toBe(
+          original.connections.length,
+        );
       });
     });
   });
@@ -364,18 +416,20 @@ describe("Dungeon Generation Determinism Suite", () => {
     });
 
     test("should handle extreme seed values", () => {
-      const extremeSeeds = [
-        0,
-        -1,
-        Number.MAX_SAFE_INTEGER,
-        Number.MIN_SAFE_INTEGER,
-      ];
+      const acceptedSeeds = [0, Number.MAX_SAFE_INTEGER];
+      const rejectedSeeds = [-1, Number.MIN_SAFE_INTEGER];
 
-      extremeSeeds.forEach((seed) => {
+      acceptedSeeds.forEach((seed) => {
         const result = DungeonManager.generateFromSeedSync(seed, baseConfig);
         const dungeon = unwrap(result);
         expect(dungeon).toBeDefined();
         expect(dungeon.checksum).toBeDefined();
+      });
+
+      rejectedSeeds.forEach((seed) => {
+        const result = DungeonManager.generateFromSeedSync(seed, baseConfig);
+        expect(result.isErr()).toBeTrue();
+        expect(result.error?.code).toBe("SEED_INVALID");
       });
     });
   });

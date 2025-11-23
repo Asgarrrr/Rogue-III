@@ -1,3 +1,4 @@
+import { DungeonError } from "@rogue/contracts";
 import { SeededRandom } from "../../core/random/seeded-random";
 import type { DungeonConfig, DungeonSeed } from "../../core/types";
 import type { Dungeon } from "../../entities";
@@ -65,7 +66,9 @@ export abstract class DungeonGenerator {
    */
   async generateAsync(
     onProgress?: (progress: number) => void,
+    signal?: AbortSignal,
   ): Promise<Dungeon> {
+    this.throwIfAborted(signal);
     // Default implementation — override in subclasses for async behavior
     const dungeon = this.generate();
     onProgress?.(100);
@@ -104,5 +107,33 @@ export abstract class DungeonGenerator {
    */
   private compareDungeons(d1: Dungeon, d2: Dungeon): boolean {
     return d1.getChecksum() === d2.getChecksum();
+  }
+
+  /**
+   * Cooperative yield helper that also checks for aborts.
+   */
+  protected async yield(signal?: AbortSignal): Promise<void> {
+    this.throwIfAborted(signal);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    this.throwIfAborted(signal);
+  }
+
+  /**
+   * Throws a DungeonError if the provided signal has been aborted.
+   */
+  protected throwIfAborted(signal?: AbortSignal): void {
+    if (!signal?.aborted) return;
+
+    const reason =
+      typeof signal.reason === "string"
+        ? signal.reason
+        : signal.reason instanceof Error
+          ? signal.reason.message
+          : "Dungeon generation aborted";
+
+    throw DungeonError.generationTimeout(reason, {
+      aborted: true,
+      reason: signal.reason ?? null,
+    });
   }
 }

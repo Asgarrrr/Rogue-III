@@ -102,11 +102,17 @@ function App() {
     setTimeout(() => setCopied(false), 1200);
   };
 
-  const onInput = <K extends keyof typeof config>(key: K, value: number | string) => {
-    setConfig((prev) => ({
-      ...prev,
-      [key]: typeof prev[key] === "number" ? Number(value) : value,
-    }) as typeof config);
+  const onInput = <K extends keyof typeof config>(
+    key: K,
+    value: number | string,
+  ) => {
+    setConfig(
+      (prev) =>
+        ({
+          ...prev,
+          [key]: typeof prev[key] === "number" ? Number(value) : value,
+        }) as typeof config,
+    );
   };
 
   return (
@@ -155,7 +161,10 @@ function App() {
                 setConfig((prev) => ({
                   ...prev,
                   algorithm: e.target.value as "cellular" | "bsp",
-                  roomCount: e.target.value === "bsp" ? Math.max(prev.roomCount, 6) : prev.roomCount,
+                  roomCount:
+                    e.target.value === "bsp"
+                      ? Math.max(prev.roomCount, 6)
+                      : prev.roomCount,
                 }))
               }
             >
@@ -212,7 +221,10 @@ function App() {
                 onChange={(e) =>
                   setConfig((prev) => ({
                     ...prev,
-                    roomSizeRange: [e.target.valueAsNumber, prev.roomSizeRange[1]],
+                    roomSizeRange: [
+                      e.target.valueAsNumber,
+                      prev.roomSizeRange[1],
+                    ],
                   }))
                 }
               />
@@ -228,7 +240,10 @@ function App() {
                 onChange={(e) =>
                   setConfig((prev) => ({
                     ...prev,
-                    roomSizeRange: [prev.roomSizeRange[0], e.target.valueAsNumber],
+                    roomSizeRange: [
+                      prev.roomSizeRange[0],
+                      e.target.valueAsNumber,
+                    ],
                   }))
                 }
               />
@@ -236,7 +251,12 @@ function App() {
           </div>
 
           <div style={styles.actions}>
-            <button style={styles.primary} onClick={generateDungeon} disabled={isLoading}>
+            <button
+              type="button"
+              style={styles.primary}
+              onClick={generateDungeon}
+              disabled={isLoading}
+            >
               {isLoading ? "..." : "Générer"}
             </button>
             <div style={styles.status}>{status}</div>
@@ -259,9 +279,13 @@ function App() {
       <div style={styles.right}>
         <div style={styles.asciiHeader}>
           <div>Grille ( # = mur, . = sol )</div>
-          <div style={styles.meta}>{checksum ? `checksum ${checksum}` : "—"}</div>
+          <div style={styles.meta}>
+            {checksum ? `checksum ${checksum}` : "—"}
+          </div>
         </div>
-        <pre style={styles.ascii}>{ascii || "Clique sur Générer pour voir la carte."}</pre>
+        <pre style={styles.ascii}>
+          {ascii || "Clique sur Générer pour voir la carte."}
+        </pre>
       </div>
     </div>
   );
@@ -299,7 +323,12 @@ const styles: Record<string, CSSProperties> = {
     justifyContent: "space-between",
     gap: "12px",
   },
-  logo: { fontWeight: 700, letterSpacing: "0.08em", color: "#8ef", fontSize: "14px" },
+  logo: {
+    fontWeight: 700,
+    letterSpacing: "0.08em",
+    color: "#8ef",
+    fontSize: "14px",
+  },
   subtitle: { color: "#8a8fa3", fontSize: "12px" },
   tag: {
     fontSize: "12px",
@@ -309,7 +338,12 @@ const styles: Record<string, CSSProperties> = {
     color: "#c7cad9",
   },
   formGrid: { display: "flex", flexDirection: "column", gap: "12px" },
-  field: { display: "flex", flexDirection: "column", gap: "6px", color: "#c7cad9" },
+  field: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    color: "#c7cad9",
+  },
   input: {
     background: "#0b0d12",
     border: "1px solid rgba(255,255,255,0.12)",
@@ -358,7 +392,12 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: "10px",
     border: "1px dashed rgba(255,255,255,0.1)",
   },
-  shareRow: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
+  shareRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    flexWrap: "wrap",
+  },
   code: {
     background: "#0b0d12",
     padding: "6px 8px",
