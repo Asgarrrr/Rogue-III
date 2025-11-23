@@ -6,11 +6,11 @@ import {
   DungeonImpl,
   type RoomImpl,
 } from "../../../entities";
-import { DungeonGenerator } from "../../base/dungeon-generator";
 import {
   getInvariantSummary,
   validateDungeonInvariants,
 } from "../../../validation";
+import { DungeonGenerator } from "../../base/dungeon-generator";
 import {
   type GenContext,
   type Pipeline,
