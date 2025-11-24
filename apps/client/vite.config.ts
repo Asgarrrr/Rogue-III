@@ -6,7 +6,7 @@ import { defineConfig } from "vite";
 // https://vite.dev/config/
 export default defineConfig({
 	preview: {
-		allowedHosts: ["8080"],
+		allowedHosts: ["8080", "rogue-iiiclient-production.up.railway.app"],
 	},
 	plugins: [
 		react(),
