@@ -46,15 +46,22 @@ export class AutomatonRules {
     }
 
     const grid = gridResult.value;
+    const data = grid.getRawData();
+    const prob = this.config.wallProbability;
 
-    // Add border walls for stability
-    this.addBorderWalls(grid);
+    // Fill borders and interior in one pass to avoid repeated bounds checks
+    for (let y = 0; y < height; y++) {
+      const rowOff = y * width;
+      const isBorderRow = y === 0 || y === height - 1;
 
-    // Fill interior with random noise
-    for (let y = 1; y < height - 1; y++) {
-      for (let x = 1; x < width - 1; x++) {
-        if (this.rng.next() < this.config.wallProbability) {
-          grid.setCell(x, y, CellType.WALL);
+      for (let x = 0; x < width; x++) {
+        const idx = rowOff + x;
+        const isBorderCol = x === 0 || x === width - 1;
+
+        if (isBorderRow || isBorderCol) {
+          data[idx] = CellType.WALL;
+        } else {
+          data[idx] = this.rng.next() < prob ? CellType.WALL : CellType.FLOOR;
         }
       }
     }

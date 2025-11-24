@@ -2,9 +2,16 @@ import {
   CellType,
   FloodFill,
   type Grid,
+  type Point,
   type Region,
   UnionFind,
 } from "../../../core/grid";
+
+export interface CavernLabels {
+  labels: Uint32Array;
+  width: number;
+  height: number;
+}
 
 /**
  * Configuration for cavern analysis
@@ -50,69 +57,68 @@ export class CavernAnalyzer {
 
   /**
    * Find caverns using Union-Find for maximum performance
+   * and return both regions and a label map (0 = wall/unused, >0 = regionId+1)
    */
   findCavernsUnionFind(grid: Grid): Region[] {
+    return this.findCavernsUnionFindWithLabels(grid).regions;
+  }
+
+  findCavernsUnionFindWithLabels(grid: Grid): {
+    regions: Region[];
+    labels: Uint32Array;
+  } {
     const width = grid.width;
     const height = grid.height;
     const uf = new UnionFind(width * height);
+    const data = grid.getRawData();
+    const floor = CellType.FLOOR;
 
-    // Convert 2D coordinates to 1D index
-    const getIndex = (x: number, y: number) => y * width + x;
-
-    // Connect adjacent floor cells
+    // Connect adjacent floor cells using raw data to avoid repeated bounds checks
     for (let y = 0; y < height; y++) {
+      const rowOff = y * width;
+      const nextRowOff = rowOff + width;
       for (let x = 0; x < width; x++) {
-        if (grid.getCell(x, y) !== CellType.FLOOR) continue;
+        const idx = rowOff + x;
+        if (data[idx] !== floor) continue;
 
-        const currentIndex = getIndex(x, y);
-
-        // Check right neighbor
-        if (x < width - 1 && grid.getCell(x + 1, y) === CellType.FLOOR) {
-          uf.union(currentIndex, getIndex(x + 1, y));
+        // Right neighbor
+        if (x + 1 < width && data[idx + 1] === floor) {
+          uf.union(idx, idx + 1);
         }
 
-        // Check bottom neighbor
-        if (y < height - 1 && grid.getCell(x, y + 1) === CellType.FLOOR) {
-          uf.union(currentIndex, getIndex(x, y + 1));
+        // Bottom neighbor (row below)
+        if (y + 1 < height && data[nextRowOff + x] === floor) {
+          uf.union(idx, nextRowOff + x);
         }
 
-        // For 8-connectivity, check diagonal neighbors
-        if (this.config.connectivityMode === "8") {
-          // Bottom-right diagonal
-          if (
-            x < width - 1 &&
-            y < height - 1 &&
-            grid.getCell(x + 1, y + 1) === CellType.FLOOR
-          ) {
-            uf.union(currentIndex, getIndex(x + 1, y + 1));
+        // Diagonal neighbors for 8-connectivity
+        if (this.config.connectivityMode === "8" && y + 1 < height) {
+          if (x + 1 < width && data[nextRowOff + x + 1] === floor) {
+            uf.union(idx, nextRowOff + x + 1);
           }
-
-          // Bottom-left diagonal
-          if (
-            x > 0 &&
-            y < height - 1 &&
-            grid.getCell(x - 1, y + 1) === CellType.FLOOR
-          ) {
-            uf.union(currentIndex, getIndex(x - 1, y + 1));
+          if (x > 0 && data[nextRowOff + x - 1] === floor) {
+            uf.union(idx, nextRowOff + x - 1);
           }
         }
       }
     }
 
     // Group cells by component
-    const components = new Map<number, { x: number; y: number }[]>();
+    const components = new Map<number, number[]>();
+    const labels = new Uint32Array(width * height);
 
     for (let y = 0; y < height; y++) {
+      const rowOff = y * width;
       for (let x = 0; x < width; x++) {
-        if (grid.getCell(x, y) !== CellType.FLOOR) continue;
+        const idx = rowOff + x;
+        if (data[idx] !== floor) continue;
 
-        const index = getIndex(x, y);
-        const root = uf.find(index);
+        const root = uf.find(idx);
 
         if (!components.has(root)) {
           components.set(root, []);
         }
-        components.get(root)?.push({ x, y });
+        components.get(root)?.push(idx);
       }
     }
 
@@ -120,34 +126,47 @@ export class CavernAnalyzer {
     const regions: Region[] = [];
     let regionId = 0;
 
-    for (const points of components.values()) {
+    for (const indices of components.values()) {
+      const size = indices.length;
       if (
-        points.length >= this.config.minCavernSize &&
-        points.length <= this.config.maxCavernSize
+        size < this.config.minCavernSize ||
+        size > this.config.maxCavernSize
       ) {
-        // Calculate bounds
-        let minX = points[0].x,
-          maxX = points[0].x;
-        let minY = points[0].y,
-          maxY = points[0].y;
-
-        for (const point of points) {
-          minX = Math.min(minX, point.x);
-          maxX = Math.max(maxX, point.x);
-          minY = Math.min(minY, point.y);
-          maxY = Math.max(maxY, point.y);
-        }
-
-        regions.push({
-          id: regionId++,
-          points,
-          bounds: { minX, minY, maxX, maxY },
-          size: points.length,
-        });
+        continue;
       }
+
+      // Convert back to points while calculating bounds
+      let minX = width,
+        maxX = 0,
+        minY = height,
+        maxY = 0;
+      const points: Point[] = [];
+      const labelValue = regionId + 1; // reserve 0 for non-floor
+
+      for (let i = 0; i < size; i++) {
+        const idx = indices[i];
+        const y = Math.floor(idx / width);
+        const x = idx - y * width;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        points.push({ x, y });
+        labels[idx] = labelValue;
+      }
+
+      regions.push({
+        id: regionId++,
+        points,
+        bounds: { minX, minY, maxX, maxY },
+        size,
+      });
     }
 
-    return regions.sort((a, b) => b.size - a.size); // Sort by size, largest first
+    return {
+      regions: regions.sort((a, b) => b.size - a.size), // Sort by size, largest first
+      labels,
+    };
   }
 
   /**
