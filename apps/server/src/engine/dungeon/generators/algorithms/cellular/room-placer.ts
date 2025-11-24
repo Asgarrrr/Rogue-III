@@ -65,7 +65,7 @@ export class RoomPlacer {
   /**
    * Place rooms in suitable caverns
    */
-  placeRooms(caverns: Region[], grid: Grid): RoomImpl[] {
+  placeRooms(caverns: Region[], grid: Grid, labels?: Uint32Array): RoomImpl[] {
     this.spatialHash.clear();
     // Ensure spatial hash bounds reflect current grid size
     this.spatialHash.setBounds({
@@ -74,21 +74,10 @@ export class RoomPlacer {
       maxX: grid.width,
       maxY: grid.height,
     });
-    const coordWidth = grid.width;
     const rooms: RoomImpl[] = [];
 
     // Sort caverns by size (largest first) for better room placement
     const sortedCaverns = [...caverns].sort((a, b) => b.size - a.size);
-
-    // Pre-compute cavern point maps for faster lookup using numeric encoding
-    // This avoids string allocation overhead for each coordinate
-    const cavernMaps = new Map<number, Set<number>>();
-    for (const cavern of sortedCaverns) {
-      cavernMaps.set(
-        cavern.id,
-        new Set(cavern.points.map((p) => encodeCoord(p.x, p.y, coordWidth))),
-      );
-    }
 
     let roomId = 0;
     let totalAttempts = 0;
@@ -103,14 +92,12 @@ export class RoomPlacer {
         break;
       }
 
-      const cmap = cavernMaps.get(cavern.id);
-      if (!cmap) continue;
       const cavernRooms = this.placeRoomsInCavern(
         cavern,
         grid,
         roomId,
         rooms.length,
-        cmap,
+        labels,
       );
 
       for (const room of cavernRooms) {
@@ -141,7 +128,7 @@ export class RoomPlacer {
     grid: Grid,
     startRoomId: number,
     existingRoomCount: number,
-    cavernPointMap: Set<number>,
+    labels: Uint32Array | undefined,
   ): RoomImpl[] {
     const rooms: RoomImpl[] = [];
     const remainingRooms = this.config.roomCount - existingRoomCount;
@@ -162,7 +149,7 @@ export class RoomPlacer {
         grid,
         startRoomId + i,
         [...rooms], // Pass copy to avoid mutation during iteration
-        cavernPointMap,
+        labels,
       );
 
       if (room) {
@@ -181,7 +168,7 @@ export class RoomPlacer {
     grid: Grid,
     roomId: number,
     existingRooms: RoomImpl[],
-    cavernPointMap: Set<number>,
+    labels: Uint32Array | undefined,
   ): RoomImpl | null {
     const bounds = cavern.bounds;
     const cavernWidth = bounds.maxX - bounds.minX + 1;
@@ -229,7 +216,8 @@ export class RoomPlacer {
           roomHeight,
           grid,
           existingRooms,
-          cavernPointMap,
+          labels,
+          cavern,
         )
       ) {
         const roomType = this.selectRoomType();
@@ -259,7 +247,8 @@ export class RoomPlacer {
     height: number,
     grid: Grid,
     existingRooms: RoomImpl[],
-    cavernPointMap: Set<number>,
+    labels: Uint32Array | undefined,
+    cavern: Region,
   ): boolean {
     // Check bounds
     if (
@@ -273,7 +262,7 @@ export class RoomPlacer {
 
     // Check if room area is mostly within cavern floor using pre-computed map
     if (
-      !this.isRoomInCavernOptimized(x, y, width, height, grid, cavernPointMap)
+      !this.isRoomInCavernOptimized(x, y, width, height, grid, labels, cavern)
     ) {
       return false;
     }
@@ -312,21 +301,25 @@ export class RoomPlacer {
     width: number,
     height: number,
     grid: Grid,
-    cavernPointMap: Set<number>,
+    labels: Uint32Array | undefined,
+    cavern: Region,
   ): boolean {
     let floorCells = 0;
     const totalCells = width * height;
     const coordWidth = grid.width;
+    const targetLabel = cavern.id + 1;
 
     for (let ry = y; ry < y + height; ry++) {
       for (let rx = x; rx < x + width; rx++) {
-        // Use numeric encoding instead of string concatenation
-        if (
-          cavernPointMap.has(encodeCoord(rx, ry, coordWidth)) &&
-          grid.getCell(rx, ry) === CellType.FLOOR
-        ) {
-          floorCells++;
+        // If labels provided, trust them for membership and skip Set lookups
+        if (labels) {
+          const idx = encodeCoord(rx, ry, coordWidth);
+          if (labels[idx] === targetLabel) floorCells++;
+          continue;
         }
+
+        // Fallback to grid-based check
+        if (grid.getCell(rx, ry) === CellType.FLOOR) floorCells++;
       }
     }
 
@@ -385,6 +378,7 @@ export class RoomPlacer {
     rooms: RoomImpl[],
     caverns: Region[],
     grid: Grid,
+    labels?: Uint32Array,
   ): RoomImpl[] {
     if (rooms.length === 0) return rooms;
 
@@ -413,11 +407,6 @@ export class RoomPlacer {
       const cavern = this.findRoomCavern(originalRoom, caverns);
       if (!cavern) continue;
 
-      // Create pre-computed cavern map for this iteration using numeric encoding
-      const cavernPointMap = new Set(
-        cavern.points.map((p) => encodeCoord(p.x, p.y, grid.width)),
-      );
-
       // Try to place room in a better position
       const otherRooms = currentRooms.filter((_, i) => i !== roomIndex);
       const newRoom = this.placeSingleRoomInCavern(
@@ -425,7 +414,7 @@ export class RoomPlacer {
         grid,
         originalRoom.id,
         otherRooms,
-        cavernPointMap,
+        labels,
       );
 
       if (newRoom) {

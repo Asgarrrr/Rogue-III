@@ -50,6 +50,8 @@ export interface CellularGeneratorConfig {
   readonly postProcessing: boolean;
 }
 
+type PerfProfile = "fast" | "balanced" | "quality";
+
 /**
  * Default configuration optimized for performance and quality
  */
@@ -92,15 +94,18 @@ export class CellularGenerator extends DungeonGenerator {
     super(dungeonConfig, seeds);
 
     // Merge room count from dungeon config
-    this.cellularConfig = {
-      ...DEFAULT_CELLULAR_CONFIG,
-      rooms: {
-        ...DEFAULT_CELLULAR_CONFIG.rooms,
-        roomCount: dungeonConfig.roomCount,
-        minRoomSize: dungeonConfig.roomSizeRange[0],
-        maxRoomSize: dungeonConfig.roomSizeRange[1],
+    this.cellularConfig = this.applyPerformanceProfile(
+      {
+        ...DEFAULT_CELLULAR_CONFIG,
+        rooms: {
+          ...DEFAULT_CELLULAR_CONFIG.rooms,
+          roomCount: dungeonConfig.roomCount,
+          minRoomSize: dungeonConfig.roomSizeRange[0],
+          maxRoomSize: dungeonConfig.roomSizeRange[1],
+        },
       },
-    };
+      (process.env.PERF_PROFILE as PerfProfile | undefined) ?? "balanced",
+    );
 
     // Initialize specialized components
     this.automatonRules = new AutomatonRules(
@@ -110,6 +115,47 @@ export class CellularGenerator extends DungeonGenerator {
     this.cavernAnalyzer = new CavernAnalyzer(this.cellularConfig.caverns);
     this.roomPlacer = new RoomPlacer(this.cellularConfig.rooms, this.roomsRng);
     this.pathFinder = new PathFinder(this.cellularConfig.pathfinding);
+  }
+
+  private applyPerformanceProfile(
+    config: CellularGeneratorConfig,
+    profile: PerfProfile,
+  ): CellularGeneratorConfig {
+    switch (profile) {
+      case "fast":
+        return {
+          ...config,
+          automaton: {
+            ...config.automaton,
+            iterations: Math.max(2, config.automaton.iterations - 1),
+          },
+          postProcessing: false,
+          pathfinding: {
+            ...config.pathfinding,
+            pathSmoothingPasses: 0,
+            tunnelWallCost: Math.max(2, config.pathfinding.tunnelWallCost - 2),
+          },
+        };
+      case "quality":
+        return {
+          ...config,
+          automaton: {
+            ...config.automaton,
+            iterations: config.automaton.iterations + 1,
+          },
+          postProcessing: true,
+          pathfinding: {
+            ...config.pathfinding,
+            pathSmoothingPasses: Math.max(
+              2,
+              config.pathfinding.pathSmoothingPasses + 1,
+            ),
+            tunnelWallCost: config.pathfinding.tunnelWallCost + 1,
+          },
+        };
+      default:
+        return config;
+    }
   }
 
   /**
@@ -169,13 +215,13 @@ export class CellularGenerator extends DungeonGenerator {
     await this.yield(signal);
 
     // Phase 2: Analyze cavern structure (25%)
-    const caverns = this.analyzeCaverns(grid);
+    const { regions: caverns, labels } = this.analyzeCaverns(grid);
     this.throwIfAborted(signal);
     updateProgress(25);
     await this.yield(signal);
 
     // Phase 3: Place rooms in suitable caverns (25%)
-    const rooms = this.placeRooms(caverns, grid);
+    const rooms = this.placeRooms(caverns, grid, labels);
     this.throwIfAborted(signal);
     updateProgress(25);
     await this.yield(signal);
@@ -263,6 +309,7 @@ export class CellularGenerator extends DungeonGenerator {
     let caverns!: Region[];
     let rooms!: RoomImpl[];
     let connections!: ConnectionImpl[];
+    let cavernLabels: Uint32Array | undefined;
 
     steps.push({
       id: "cellular.grid",
@@ -279,7 +326,9 @@ export class CellularGenerator extends DungeonGenerator {
       io: { reads: ["grid.base"], writes: ["graphs.regions"] },
       dependsOn: ["cellular.grid"],
       run: (ctx) => {
-        caverns = this.analyzeCaverns(grid);
+        const result = this.analyzeCaverns(grid);
+        caverns = result.regions;
+        cavernLabels = result.labels;
         ctx.graphs.regions = caverns;
       },
     });
@@ -289,7 +338,7 @@ export class CellularGenerator extends DungeonGenerator {
       io: { reads: ["graphs.regions"], writes: ["graphs.rooms"] },
       dependsOn: ["cellular.caverns"],
       run: (ctx) => {
-        rooms = this.placeRooms(caverns, grid);
+        rooms = this.placeRooms(caverns, grid, cavernLabels);
         ctx.graphs.rooms = rooms;
       },
     });
@@ -430,31 +479,47 @@ export class CellularGenerator extends DungeonGenerator {
   /**
    * Analyze cavern structure using Union-Find
    */
-  private analyzeCaverns(grid: Grid): Region[] {
+  private analyzeCaverns(grid: Grid): {
+    regions: Region[];
+    labels: Uint32Array;
+  } {
     // Use Union-Find for maximum performance
-    const caverns = this.cavernAnalyzer.findCavernsUnionFind(grid);
+    const { regions, labels } =
+      this.cavernAnalyzer.findCavernsUnionFindWithLabels(grid);
 
     // Filter caverns suitable for room placement
     const suitableCaverns = this.cavernAnalyzer.findRoomSuitableCaverns(
-      caverns,
+      regions,
       this.cellularConfig.rooms.minRoomSize,
     );
 
-    return suitableCaverns as Region[];
+    return {
+      regions: suitableCaverns as Region[],
+      labels,
+    };
   }
 
   /**
    * Place rooms in suitable caverns using spatial hashing
    */
-  private placeRooms(caverns: Region[], grid: Grid) {
-    const rooms = this.roomPlacer.placeRooms(caverns, grid);
+  private placeRooms(
+    caverns: Region[],
+    grid: Grid,
+    labels?: Uint32Array,
+  ): RoomImpl[] {
+    const rooms = this.roomPlacer.placeRooms(caverns, grid, labels);
 
     // Optional: Optimize placement using simulated annealing
     if (
       rooms.length > 0 &&
       rooms.length < this.cellularConfig.rooms.roomCount
     ) {
-      return this.roomPlacer.optimizeRoomPlacement(rooms, caverns, grid);
+      return this.roomPlacer.optimizeRoomPlacement(
+        rooms,
+        caverns,
+        grid,
+        labels,
+      );
     }
 
     return rooms;
@@ -565,8 +630,8 @@ export class CellularGenerator extends DungeonGenerator {
    */
   getGenerationStats() {
     const grid = this.generateCellularGrid();
-    const caverns = this.analyzeCaverns(grid);
-    const stats = this.cavernAnalyzer.generateCavernStatistics(caverns);
+    const { regions } = this.analyzeCaverns(grid);
+    const stats = this.cavernAnalyzer.generateCavernStatistics(regions);
 
     return {
       gridSize: {
