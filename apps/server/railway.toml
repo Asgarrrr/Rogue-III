@@ -1,6 +1,6 @@
 [build]
-builder = "NIXPACKS"
-buildCommand = "bun install && bun run build"
+builder = "RAILPACK"
+buildCommand = "bun run build"
 watchPatterns = ["apps/server/**", "packages/**"]
 
 [deploy]

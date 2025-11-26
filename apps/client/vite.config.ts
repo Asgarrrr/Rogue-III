@@ -5,18 +5,18 @@ import { defineConfig } from "vite";
 
 // https://vite.dev/config/
 export default defineConfig({
-	preview: {
-		allowedHosts: ["8080", "rogue-iiiclient-production.up.railway.app"],
-	},
-	plugins: [
-		react(),
-		tailwindcss(),
-		tanstackRouter({
-			autoCodeSplitting: true,
-			routesDirectory: "./src/routes",
-			generatedRouteTree: "./src/routeTree.gen.ts",
-			routeFileIgnorePrefix: "-",
-			quoteStyle: "double",
-		}),
-	],
+  preview: {
+    allowedHosts: true,
+  },
+  plugins: [
+    react(),
+    tailwindcss(),
+    tanstackRouter({
+      autoCodeSplitting: true,
+      routesDirectory: "./src/routes",
+      generatedRouteTree: "./src/routeTree.gen.ts",
+      routeFileIgnorePrefix: "-",
+      quoteStyle: "double",
+    }),
+  ],
 });
