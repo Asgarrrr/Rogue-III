@@ -5,6 +5,7 @@
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
+  "packageManager": "bun@1.3.3",
   "exports": {
     ".": {
       "import": "./src/index.ts",
