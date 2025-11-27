@@ -93,7 +93,7 @@ export const createApp = () =>
     )
     .get("/", () => ({
       message: "Bienvenue sur l'API Rogue III",
-      version: "0.1.0",
+      version: "0.0.0",
       timestamp: new Date().toISOString(),
     }))
     .get("/api/health", () => ({
