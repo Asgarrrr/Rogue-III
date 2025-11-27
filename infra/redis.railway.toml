@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.redis"
+dockerfilePath = "infra/Dockerfile.redis"
 watchPatterns = ["infra/**"]
 
 [deploy]

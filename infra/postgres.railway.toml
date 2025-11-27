@@ -1,6 +1,6 @@
 [build]
 builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile.postgres"
+dockerfilePath = "infra/Dockerfile.postgres"
 watchPatterns = ["infra/**"]
 
 [deploy]
