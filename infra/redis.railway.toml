@@ -1,0 +1,14 @@
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "./Dockerfile.redis"
+watchPatterns = ["infra/**"]
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
+numReplicas = 1
+requiredMountPath = "/data"
+
+[deploy.env]
+PORT = "6379"
+
