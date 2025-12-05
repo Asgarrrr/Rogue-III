@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   transpilePackages: ["pg"],
   cacheComponents: true,
   reactCompiler: true,
-
+  serverExternalPackages: ["better-auth"],
   experimental: {
     turbopackFileSystemCacheForBuild: true,
     turbopackFileSystemCacheForDev: true,
