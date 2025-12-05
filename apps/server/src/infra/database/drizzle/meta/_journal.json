@@ -8,6 +8,27 @@
       "when": 1764522378654,
       "tag": "0000_slim_veda",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1764868612073,
+      "tag": "0001_empty_talos",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1764883287429,
+      "tag": "0002_first_galactus",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1764902057161,
+      "tag": "0003_dusty_nightcrawler",
+      "breakpoints": true
     }
   ]
 }

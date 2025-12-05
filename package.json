@@ -20,6 +20,8 @@
     "packages/*"
   ],
   "dependencies": {
+    "@elysiajs/cron": "^1.4.1",
+    "ioredis": "^5.8.2",
     "zod": "^4.1.5"
   }
 }

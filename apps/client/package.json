@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "lint": "biome check",
@@ -12,8 +12,12 @@
     "format-and-lint:fix": "biome check . --write"
   },
   "dependencies": {
+    "@elysiajs/eden": "^1.4.5",
+    "@rogue/auth": "workspace:*",
     "@rogue/server": "workspace:*",
-    "next": "16.1.0-canary.4",
+    "better-auth": "^1.4.4",
+    "drizzle-orm": "^0.44.7",
+    "next": "^16.1.0-canary.14",
     "pixi.js": "^8.14.3",
     "react": "19.2.0",
     "react-dom": "19.2.0"
@@ -24,6 +28,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "baseline-browser-mapping": "latest",
     "tailwindcss": "^4",
     "typescript": "^5"
   },

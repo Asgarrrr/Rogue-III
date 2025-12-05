@@ -1,0 +1,42 @@
+{
+  "name": "@rogue/auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./config": {
+      "import": "./src/config.ts",
+      "types": "./src/config.ts"
+    },
+    "./schema": {
+      "import": "./src/schema/index.ts",
+      "types": "./src/schema/index.ts"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "better-auth": "^1.4.4"
+  },
+  "peerDependencies": {
+    "drizzle-orm": "^0.44.0",
+    "ioredis": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    }
+  },
+  "packageManager": "bun@1.3.3",
+  "engines": {
+    "bun": ">=1.3.0",
+    "node": ">=22"
+  }
+}

@@ -1,8 +1,21 @@
 declare module "bun" {
   interface Env {
-    BETTER_AUTH_SECRET: string;
-    BETTER_AUTH_BASE_URL: string;
-
+    // Database
     DATABASE_URL: string;
+
+    // Server configuration
+    SERVER_URL: string;
+    CLIENT_URL: string;
+    SERVER_HOST: string;
+    SERVER_PORT: string;
+
+    // Redis (optional)
+    REDIS_URL?: string;
+
+    // Performance profiling (optional)
+    PERF_PROFILE?: "fast" | "balanced" | "quality";
+
+    // Node environment
+    NODE_ENV: "development" | "production" | "test";
   }
 }
