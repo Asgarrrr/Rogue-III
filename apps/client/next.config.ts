@@ -1,7 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["pg"],
   cacheComponents: true,
   reactCompiler: true,
   serverExternalPackages: ["better-auth"],
