@@ -16,7 +16,7 @@ const redis = await createRedisStorage(process.env.REDIS_URL);
 
 export const auth = createAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
-  baseURL: process.env.CLIENT_URL,
+  baseURL: process.env.CLIENT_URL!,
   plugins: [nextCookies()],
   redis,
   enableRateLimiting: !!redis,
