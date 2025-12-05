@@ -8,7 +8,6 @@ export const auth = createAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
   baseURL: process.env.SERVER_URL,
   redis,
-  enableRateLimiting: !!redis,
 });
 
 export type Session = typeof auth.$Infer.Session;

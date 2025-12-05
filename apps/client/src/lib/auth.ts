@@ -1,4 +1,4 @@
-import { createAuth, schema } from "@rogue/auth";
+import { createAuth, createRedisStorage, schema } from "@rogue/auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -12,11 +12,14 @@ const pool = new Pool({
 });
 
 const db = drizzle(pool, { schema });
+const redis = await createRedisStorage(process.env.REDIS_URL);
 
 export const auth = createAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
   baseURL: process.env.CLIENT_URL,
   plugins: [nextCookies()],
+  redis,
+  enableRateLimiting: !!redis,
 });
 
 export type Session = typeof auth.$Infer.Session;

@@ -90,7 +90,7 @@ const db = drizzle(pool, { schema });
 export const auth = createAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),
   baseURL: process.env.NEXT_PUBLIC_APP_ORIGIN,
-  plugins: [nextCookies()], // ✅ Required for Server Actions
+  plugins: [nextCookies()],
 });
 ```
 
