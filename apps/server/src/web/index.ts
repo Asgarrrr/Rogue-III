@@ -1,12 +1,10 @@
 import { cors } from "@elysiajs/cors";
-import { checkRedisHealth, createRedisStorage } from "@rogue/auth";
+import { checkRedisHealth } from "@rogue/auth";
 import { Elysia } from "elysia";
-import { auth } from "../infra/auth";
+import { auth, redis } from "../infra/auth";
 import { cleanupPlugin } from "../jobs/cleanup";
 import { securityPlugin } from "./core/plugins/security.plugin";
 import { wsRoutes } from "./ws";
-
-const redis = createRedisStorage(process.env.REDIS_URL);
 
 export function createWebApp() {
   return new Elysia({ name: "web" })

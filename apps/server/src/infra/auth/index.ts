@@ -2,7 +2,7 @@ import { createAuth, createRedisStorage, schema } from "@rogue/auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "../database";
 
-const redis = createRedisStorage(process.env.REDIS_URL);
+export const redis = await createRedisStorage(process.env.REDIS_URL);
 
 export const auth = createAuth({
   database: drizzleAdapter(db, { provider: "pg", schema }),

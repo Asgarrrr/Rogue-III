@@ -1,7 +1,9 @@
 import type { Redis } from "ioredis";
 import type { RedisStorage } from "./create-auth";
 
-export function createRedisStorage(url?: string): RedisStorage | undefined {
+export async function createRedisStorage(
+  url?: string,
+): Promise<RedisStorage | undefined> {
   if (!url) {
     console.info("[Auth] Redis URL not provided, secondary storage disabled");
     return undefined;
@@ -11,7 +13,7 @@ export function createRedisStorage(url?: string): RedisStorage | undefined {
 
   try {
     // Dynamic import to handle optional peer dependency
-    const IORedis = require("ioredis");
+    const IORedis = await import("ioredis");
     redis = new IORedis.default(url, {
       maxRetriesPerRequest: 3,
       retryStrategy: (times: number) => {
