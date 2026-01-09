@@ -41,9 +41,10 @@ export class DungeonError extends Error {
     super(message);
 
     // Maintains proper stack trace in V8 environments
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, DungeonError);
-    }
+    const ErrorCtor = Error as ErrorConstructor & {
+      captureStackTrace?: (target: object, ctor: Function) => void;
+    };
+    ErrorCtor.captureStackTrace?.(this, DungeonError);
   }
 
   /**

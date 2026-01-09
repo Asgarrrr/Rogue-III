@@ -1,5 +1,5 @@
-import { startWebApp } from "./web";
+import { type createWebApp, startWebApp } from "./server/api";
 
 export const app = startWebApp();
 
-export type App = typeof app;
+export type App = ReturnType<typeof createWebApp>;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { DungeonManager } from "../../src/engine/dungeon";
-import { CellType, Grid } from "../../src/engine/dungeon/core/grid";
+import { DungeonManager } from "../../src/game/dungeon";
+import { CellType, Grid } from "../../src/game/dungeon/core/grid";
 
 function time(fn: () => void): number {
   const start = performance.now();

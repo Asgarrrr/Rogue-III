@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DungeonManager } from "../../src/engine/dungeon";
+import { DungeonManager } from "../../src/game/dungeon";
 
 const baseConfig = {
   width: 50,

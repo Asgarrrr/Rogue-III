@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { DungeonManager } from "../../src/engine/dungeon";
+import { DungeonManager } from "../../src/game/dungeon";
 
 type Algorithm = "cellular" | "bsp";
 

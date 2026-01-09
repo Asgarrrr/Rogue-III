@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { DungeonSeed } from "../../src/engine/dungeon/core/types/dungeon.types";
-import { SeedManager } from "../../src/engine/dungeon/serialization/seed-manager";
+import type { DungeonSeed } from "../../src/game/dungeon/core/types/dungeon.types";
+import { SeedManager } from "../../src/game/dungeon/serialization/seed-manager";
 import { createMockSeed } from "./test-helpers";
 
 describe("Seed Validation", () => {

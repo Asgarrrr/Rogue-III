@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { DungeonManager } from "../src/engine/dungeon";
-import { SeededRandom } from "../src/engine/dungeon/core/random/seeded-random";
-import type { Dungeon } from "../src/engine/dungeon/entities";
-import { CellularGenerator } from "../src/engine/dungeon/generators/algorithms/cellular";
+import { DungeonManager } from "../src/game/dungeon";
+import { SeededRandom } from "../src/game/dungeon/core/random/seeded-random";
+import type { Dungeon } from "../src/game/dungeon/entities";
+import { CellularGenerator } from "../src/game/dungeon/generators/algorithms/cellular";
 
 // Test constants
 const TEST_SEED = 123456789;

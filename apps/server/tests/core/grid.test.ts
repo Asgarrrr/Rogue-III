@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CellType, Grid } from "../../src/engine/dungeon/core/grid";
+import { CellType, Grid } from "../../src/game/dungeon/core/grid";
 
 describe("Grid", () => {
   describe("Constructor and initialization", () => {

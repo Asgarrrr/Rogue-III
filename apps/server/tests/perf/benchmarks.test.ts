@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { DungeonManager } from "../../src/engine/dungeon";
-import { buildDungeonConfig } from "../../src/engine/dungeon/config/builder";
-import { CellType, Grid } from "../../src/engine/dungeon/core/grid";
-import { FloodFill } from "../../src/engine/dungeon/core/grid/flood-fill";
-import { SeededRandom } from "../../src/engine/dungeon/core/random/seeded-random";
+import { DungeonManager } from "../../src/game/dungeon";
+import { buildDungeonConfig } from "../../src/game/dungeon/config/builder";
+import { CellType, Grid } from "../../src/game/dungeon/core/grid";
+import { FloodFill } from "../../src/game/dungeon/core/grid/flood-fill";
+import { SeededRandom } from "../../src/game/dungeon/core/random/seeded-random";
 
 /**
  * Performance benchmarks with baseline expectations

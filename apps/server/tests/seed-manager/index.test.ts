@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SeedManager } from "../../src/engine/dungeon/serialization/seed-manager";
+import { SeedManager } from "../../src/game/dungeon/serialization/seed-manager";
 import { testSeeds } from "./test-helpers";
 
 // Main integration tests that cover the complete seed manager workflow

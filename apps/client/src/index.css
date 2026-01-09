@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+@theme {
+  --color-dungeon-floor: #1a1a2e;
+  --color-dungeon-wall: #16213e;
+  --color-dungeon-player: #e94560;
+  --color-dungeon-enemy: #ff6b6b;
+  --color-dungeon-item: #ffd93d;
+  --color-dungeon-water: #4169e1;
+  --color-dungeon-lava: #ff4500;
+  --font-mono: "Fira Code", "JetBrains Mono", "Cascadia Code", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-mono);
+  background-color: var(--color-dungeon-floor);
+  color: #e0e0e0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

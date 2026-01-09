@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { CellType, Grid } from "../../src/engine/dungeon/core/grid";
-import { RoomImpl } from "../../src/engine/dungeon/entities/room";
+import { CellType, Grid } from "../../src/game/dungeon/core/grid";
+import { RoomImpl } from "../../src/game/dungeon/entities/room";
 import {
   DEFAULT_PATHFINDING_CONFIG,
   PathFinder,
   type PathfindingConfig,
-} from "../../src/engine/dungeon/generators/algorithms/cellular/path-finder";
+} from "../../src/game/dungeon/generators/algorithms/cellular/path-finder";
 
 // Helper to create a room at specific position
 function createRoom(
