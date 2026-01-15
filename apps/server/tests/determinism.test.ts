@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { DungeonManager } from "../src/game/dungeon";
-import { SeededRandom } from "../src/game/dungeon/core/random/seeded-random";
-import type { Dungeon } from "../src/game/dungeon/entities";
-import { CellularGenerator } from "../src/game/dungeon/generators/algorithms/cellular";
+import { DungeonManager } from "@rogue/procgen";
+import { SeededRandom } from "@rogue/procgen";
+import type { Dungeon } from "@rogue/procgen";
+import { CellularGenerator } from "@rogue/procgen";
 
 // Test constants
 const TEST_SEED = 123456789;

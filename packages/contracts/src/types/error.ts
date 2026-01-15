@@ -31,7 +31,7 @@ export type DungeonErrorCode =
  * ```
  */
 export class DungeonError extends Error {
-  readonly name = "DungeonError";
+  override readonly name = "DungeonError";
 
   constructor(
     public readonly code: DungeonErrorCode,

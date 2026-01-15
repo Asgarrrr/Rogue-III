@@ -1,0 +1,4 @@
+{
+  "extends": "@rogue/typescript-config/base.json",
+  "include": ["src/**/*"]
+}

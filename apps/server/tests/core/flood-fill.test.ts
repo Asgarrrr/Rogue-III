@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { CellType, FloodFill, Grid } from "../../src/game/dungeon/core/grid";
+import { CellType, FloodFill, Grid } from "@rogue/procgen";
 
 describe("FloodFill", () => {
   describe("scanlineFill()", () => {

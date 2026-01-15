@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ROOM_DENSITY_DIVISOR } from "@rogue/contracts";
-import { DungeonManager } from "../src/game/dungeon";
+import { DungeonManager } from "@rogue/procgen";
 
 function unwrap<T>(result: {
   isErr(): boolean;

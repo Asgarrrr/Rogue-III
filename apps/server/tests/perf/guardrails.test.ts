@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { DungeonManager } from "../../src/game/dungeon";
-import { CellType, Grid } from "../../src/game/dungeon/core/grid";
+import { DungeonManager } from "@rogue/procgen";
+import { CellType, Grid } from "@rogue/procgen";
 
 function time(fn: () => void): number {
   const start = performance.now();

@@ -1,8 +1,10 @@
 {
+  "extends": "@rogue/typescript-config/base.json",
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ES2022",
+    "target": "ESNext",
+    "module": "ESNext",
     "moduleResolution": "bundler",
+    "lib": ["ES2022"],
     "types": ["bun-types"],
     "outDir": "./dist",
     "rootDir": "./src",
@@ -12,7 +14,9 @@
     "forceConsistentCasingInFileNames": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
-    "useDefineForClassFields": true
+    "useDefineForClassFields": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
   },
   "include": ["src/**/*", "**/*.d.ts"],
   "exclude": ["node_modules", "dist"]

@@ -1,15 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { DungeonManager } from "../../src/game/dungeon";
+import { DungeonManager } from "@rogue/procgen";
 import type {
   Connection,
   Dungeon,
   Room,
-} from "../../src/game/dungeon/entities";
+} from "@rogue/procgen";
 import {
   assertDungeonInvariants,
   getInvariantSummary,
   validateDungeonInvariants,
-} from "../../src/game/dungeon/validation/invariants";
+} from "@rogue/procgen";
 
 function unwrap<T>(result: {
   isErr(): boolean;

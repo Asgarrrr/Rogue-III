@@ -5,12 +5,17 @@
 ## Structure
 ```
 game/
-├── ecs/              # Entity-Component-System (v1 current, v2 WIP)
-│   ├── core/         # World, entities, components, systems, queries
-│   ├── game/         # Game-specific components, systems, templates
-│   ├── features/     # Templates, serialization, hierarchy
-│   └── integration/  # Dungeon loader
-├── ecs-v2/           # Next-gen ECS (field-based storage)
+├── ecs/              # Entity-Component-System (archetype-based)
+│   ├── core/         # World, entities, components, archetypes, queries
+│   ├── event/        # EventQueue, Observers (reactive hooks)
+│   ├── relationship/ # Relations (ChildOf, Contains, entity refs)
+│   ├── schedule/     # System scheduler, sets, run conditions
+│   ├── query/        # Query cache, filters, union queries
+│   ├── spatial/      # Spatial grid for efficient lookups
+│   ├── prefab/       # Prefab templates
+│   ├── serialization/# Save/load with migrations
+│   ├── storage/      # String pool, resources
+│   └── docs/         # Complete ECS documentation
 ├── dungeon/          # Procedural generation
 │   ├── generators/   # BSP + Cellular algorithms
 │   ├── core/         # Grid, flood-fill, union-find, spatial-hash
@@ -26,29 +31,51 @@ game/
 ## Where to Look
 | Task | Location |
 |------|----------|
-| Add component | `ecs/game/components/` + register in index.ts |
-| Add system | `ecs/game/systems/` + configure phase/dependencies |
-| Add entity template | `ecs/game/templates/` using `defineTemplate()` |
+| Add component | Define with `@component` decorator |
+| Add system | `defineSystem("Name").inPhase(Phase.Update).execute(...)` |
+| Add entity prefab | `definePrefab("Name", ...)` |
 | New dungeon algorithm | `dungeon/generators/algorithms/` extending `DungeonGenerator` |
 | Network messages | `network/message-handler.ts` + contracts protocol |
+| ECS docs | `ecs/docs/` - comprehensive guides and cheat sheet |
 
 ## Key Patterns
 
 ### ECS Component Definition
 ```typescript
-const PositionSchema = ComponentSchema.define("Position")
-  .field("x", ComponentType.I32, 0)
-  .field("y", ComponentType.I32, 0)
-  .build();
+import { component, i32, f32, str, entityRef } from "./ecs";
+
+@component
+class Position {
+  x = i32(0);
+  y = i32(0);
+}
+
+@component
+class Item {
+  name = str("Unknown");
+  damage = i32(0);
+  holder = entityRef();  // Reference to holding entity
+}
 ```
 
 ### System Registration
 ```typescript
+import { defineSystem, Phase } from "./ecs";
+
 const MovementSystem = defineSystem("Movement")
-  .inPhase(SystemPhase.Update)
-  .runBefore("Collision")
-  .withQuery({ with: ["Position", "Velocity"] })
-  .execute((world) => { /* ... */ });
+  .inPhase(Phase.Update)
+  .before("Collision")
+  .execute((world) => {
+    world.query(Position, Velocity).run(view => {
+      const x = view.column(Position, "x");
+      const vx = view.column(Velocity, "vx");
+      for (let i = 0; i < view.count; i++) {
+        x[i] += vx[i];
+      }
+    });
+  });
+
+world.addSystem(MovementSystem);
 ```
 
 ### Turn System

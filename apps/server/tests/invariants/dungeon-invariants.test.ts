@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DungeonManager } from "../../src/game/dungeon";
-import { CellType, Grid } from "../../src/game/dungeon/core/grid";
-import type { Dungeon, Room } from "../../src/game/dungeon/entities";
+import { DungeonManager } from "@rogue/procgen";
+import { CellType, Grid } from "@rogue/procgen";
+import type { Dungeon, Room } from "@rogue/procgen";
 
 function unwrap<T>(result: {
   isErr(): boolean;

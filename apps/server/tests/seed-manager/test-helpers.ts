@@ -1,4 +1,4 @@
-import type { DungeonSeed } from "../../src/game/dungeon/core/types/dungeon.types";
+import type { DungeonSeed } from "@rogue/procgen";
 
 export const testSeeds = {
   validNumericSeed: 123456789,

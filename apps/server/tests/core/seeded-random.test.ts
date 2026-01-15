@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SeededRandom } from "../../src/game/dungeon/core/random/seeded-random";
+import { SeededRandom } from "@rogue/procgen";
 
 describe("SeededRandom (xorshift128+)", () => {
   test("produces deterministic sequences and supports state restore", () => {

@@ -1,0 +1,56 @@
+{
+  "name": "@rogue/procgen-v2",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./core": {
+      "import": "./src/core/index.ts",
+      "types": "./src/core/index.ts"
+    },
+    "./pipeline": {
+      "import": "./src/pipeline/index.ts",
+      "types": "./src/pipeline/index.ts"
+    },
+    "./generators": {
+      "import": "./src/generators/index.ts",
+      "types": "./src/generators/index.ts"
+    },
+    "./metrics": {
+      "import": "./src/metrics/index.ts",
+      "types": "./src/metrics/index.ts"
+    },
+    "./passes": {
+      "import": "./src/passes/index.ts",
+      "types": "./src/passes/index.ts"
+    },
+    "./utils": {
+      "import": "./src/utils/index.ts",
+      "types": "./src/utils/index.ts"
+    },
+    "./fragments": {
+      "import": "./src/fragments/index.ts",
+      "types": "./src/fragments/index.ts"
+    },
+    "./prefabs": {
+      "import": "./src/prefabs/index.ts",
+      "types": "./src/prefabs/index.ts"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@rogue/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@rogue/typescript-config": "workspace:*",
+    "bun-types": "latest"
+  }
+}

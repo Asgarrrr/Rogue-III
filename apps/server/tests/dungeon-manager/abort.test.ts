@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DungeonManager } from "../../src/game/dungeon";
+import { DungeonManager } from "@rogue/procgen";
 
 const baseConfig = {
   width: 50,
