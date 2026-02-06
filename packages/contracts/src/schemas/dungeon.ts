@@ -3,6 +3,18 @@ import { z } from "zod";
 export const MAX_DUNGEON_CELLS = 1_000_000;
 export const ROOM_DENSITY_DIVISOR = 25;
 
+const ContentGenerationParamsSchema = z
+  .object({
+    difficulty: z.number().int().min(1).max(10).optional(),
+    enemyDensity: z.number().min(0).max(1).optional(),
+    itemDensity: z.number().min(0).max(1).optional(),
+    trapChance: z.number().min(0).max(1).optional(),
+    decorationChance: z.number().min(0).max(1).optional(),
+    enableTreasureRooms: z.boolean().optional(),
+    enableTraps: z.boolean().optional(),
+  })
+  .optional();
+
 const SharedFields = {
   width: z.number().int("Width must be an integer").min(10).max(10000),
   height: z.number().int("Height must be an integer").min(10).max(10000),
@@ -14,6 +26,7 @@ const SharedFields = {
     .refine(([min, max]) => min <= max, {
       message: "Minimum room size must be <= maximum room size",
     }),
+  content: ContentGenerationParamsSchema,
 };
 
 const ensureDimensionsSafe = (

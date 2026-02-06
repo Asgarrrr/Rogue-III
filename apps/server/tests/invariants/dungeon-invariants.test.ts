@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { DungeonManager } from "../../src/engine/dungeon";
-import { CellType, Grid } from "../../src/engine/dungeon/core/grid";
-import type { Dungeon, Room } from "../../src/engine/dungeon/entities";
+import { DungeonManager } from "@rogue/procgen";
+import { CellType, Grid } from "@rogue/procgen";
+import type { Dungeon, Room } from "@rogue/procgen";
 
 function unwrap<T>(result: {
   isErr(): boolean;
@@ -127,11 +127,11 @@ describe("Dungeon invariants", () => {
             config,
           );
           const dungeon = unwrap(dungeonResult);
-          expect(dungeon.grid).toBeDefined();
-          if (!dungeon.grid) {
-            throw new Error("Dungeon grid is missing");
+          expect(dungeon.terrain).toBeDefined();
+          if (!dungeon.terrain) {
+            throw new Error("Dungeon terrain is missing");
           }
-          const grid = Grid.fromBooleanGrid(dungeon.grid);
+          const grid = Grid.fromBooleanGrid(dungeon.toLegacyGrid());
 
           assertRoomsDoNotOverlap(dungeon.rooms);
           assertAllRoomsReachable(dungeon, grid);

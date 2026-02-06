@@ -18,7 +18,6 @@ coverage
 # Turbo
 .turbo
 
-*.md
 !README.md
 .claude
 

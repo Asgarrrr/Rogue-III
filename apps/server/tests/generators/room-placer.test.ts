@@ -1,14 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import {
-  CellType,
-  Grid,
-  type Region,
-} from "../../src/engine/dungeon/core/grid";
-import { SeededRandom } from "../../src/engine/dungeon/core/random/seeded-random";
+import { CellType, Grid, type Region } from "@rogue/procgen";
+import { SeededRandom } from "@rogue/procgen";
 import {
   DEFAULT_ROOM_PLACEMENT_CONFIG,
   RoomPlacer,
-} from "../../src/engine/dungeon/generators/algorithms/cellular/room-placer";
+} from "@rogue/procgen";
 
 const makeRectRegion = (
   id: number,

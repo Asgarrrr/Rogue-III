@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SeedManager } from "../../src/engine/dungeon/serialization/seed-manager";
+import { SeedManager } from "@rogue/procgen";
 import { testSeeds } from "./test-helpers";
 
 describe("Seed Normalization", () => {

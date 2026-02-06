@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { DungeonManager } from "../../src/engine/dungeon";
+import { DungeonManager } from "@rogue/procgen";
 
 type Algorithm = "cellular" | "bsp";
 
