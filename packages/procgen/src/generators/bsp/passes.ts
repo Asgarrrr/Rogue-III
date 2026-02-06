@@ -5,32 +5,40 @@
  * Uses DungeonStateArtifact to carry full state through the pipeline.
  */
 
-import { range, SeededRandom } from "@rogue/contracts";
+import { range } from "@rogue/contracts";
+import { MAX_UINT32 } from "../../core";
 import {
   buildMSTFromEdges,
   delaunayTriangulation,
 } from "../../core/geometry/delaunay";
 import type { Point } from "../../core/geometry/types";
-import { CellType, Grid } from "../../core/grid";
-import { calculateChecksum } from "../../core/hash";
+import { CellType } from "../../core/grid";
+import {
+  carveCorridor,
+  carveLShapedCorridorFast,
+} from "../../passes/carving/corridor-carvers";
+import {
+  createInitializeStatePass,
+  createPlaceEntranceExitPass,
+} from "../../passes/common";
 import type {
   BSPNode,
   Connection,
-  DungeonArtifact,
   DungeonStateArtifact,
   EmptyArtifact,
   Pass,
   Room,
-  RoomType,
-  SpawnPoint,
 } from "../../pipeline/types";
-import { DEFAULT_BSP_CONFIG } from "../../pipeline/types";
 import {
   ALL_TEMPLATES,
   getTemplateCenter,
-  selectTemplateForLeaf,
   SIGNATURE_PREFABS,
+  selectTemplateForLeaf,
 } from "../../prefabs";
+import {
+  RANDOM_DIRECTION_THRESHOLD,
+  SPLIT_PREFERENCE_RATIO,
+} from "./constants";
 
 // Combined templates: basic shapes + signature rooms
 const COMBINED_TEMPLATES = [...ALL_TEMPLATES, ...SIGNATURE_PREFABS];
@@ -42,35 +50,12 @@ const COMBINED_TEMPLATES = [...ALL_TEMPLATES, ...SIGNATURE_PREFABS];
 /**
  * Creates initial dungeon state with wall-filled grid
  */
-export function initializeState(): Pass<EmptyArtifact, DungeonStateArtifact> {
-  return {
-    id: "bsp.initialize-state",
-    inputType: "empty",
-    outputType: "dungeon-state",
-    run(_input, ctx) {
-      const grid = new Grid(ctx.config.width, ctx.config.height, CellType.WALL);
-
-      ctx.trace.decision(
-        "bsp.initialize-state",
-        "Initialize grid",
-        ["walls", "floors"],
-        "walls",
-        `Created ${ctx.config.width}x${ctx.config.height} grid filled with walls`,
-      );
-
-      return {
-        type: "dungeon-state",
-        id: "dungeon-state",
-        width: ctx.config.width,
-        height: ctx.config.height,
-        grid,
-        rooms: [],
-        edges: [],
-        connections: [],
-        spawns: [],
-      };
-    },
-  };
+export function initializeState(): Pass<
+  EmptyArtifact,
+  DungeonStateArtifact,
+  never
+> {
+  return createInitializeStatePass("bsp");
 }
 
 // =============================================================================
@@ -82,14 +67,17 @@ export function initializeState(): Pass<EmptyArtifact, DungeonStateArtifact> {
  */
 export function partitionBSP(): Pass<
   DungeonStateArtifact,
-  DungeonStateArtifact
+  DungeonStateArtifact,
+  "layout"
 > {
   return {
     id: "bsp.partition",
     inputType: "dungeon-state",
     outputType: "dungeon-state",
+    requiredStreams: ["layout"] as const,
     run(input, ctx) {
-      const config = { ...DEFAULT_BSP_CONFIG, ...ctx.config.bsp };
+      // Config is pre-validated with all defaults resolved
+      const config = ctx.config.bsp;
       const rng = ctx.streams.layout; // Use layout RNG stream
 
       // Create root node
@@ -106,7 +94,7 @@ export function partitionBSP(): Pass<
 
       // Recursive partition function
       function partition(node: BSPNode, depth: number): BSPNode {
-        const maxDepth = config.maxDepth ?? 8;
+        const maxDepth = config.maxDepth;
         const minSize = config.minRoomSize * 2 + config.roomPadding * 2;
 
         // Check if we should stop splitting
@@ -144,16 +132,16 @@ export function partitionBSP(): Pass<
 
         if (canSplitH && canSplitV) {
           // Prefer splitting along the longer axis
-          if (node.width > node.height * 1.25) {
+          if (node.width > node.height * SPLIT_PREFERENCE_RATIO) {
             splitHorizontally = false;
-            directionReason = `Width ${node.width} > height*1.25 (${(node.height * 1.25).toFixed(0)})`;
-          } else if (node.height > node.width * 1.25) {
+            directionReason = `Width ${node.width} > height*${SPLIT_PREFERENCE_RATIO} (${(node.height * SPLIT_PREFERENCE_RATIO).toFixed(0)})`;
+          } else if (node.height > node.width * SPLIT_PREFERENCE_RATIO) {
             splitHorizontally = true;
-            directionReason = `Height ${node.height} > width*1.25 (${(node.width * 1.25).toFixed(0)})`;
+            directionReason = `Height ${node.height} > width*${SPLIT_PREFERENCE_RATIO} (${(node.width * SPLIT_PREFERENCE_RATIO).toFixed(0)})`;
           } else {
             const randomVal = rng.next();
-            splitHorizontally = randomVal > 0.5;
-            directionReason = `Random choice (${randomVal.toFixed(3)} ${splitHorizontally ? ">" : "<="} 0.5)`;
+            splitHorizontally = randomVal > RANDOM_DIRECTION_THRESHOLD;
+            directionReason = `Random choice (${randomVal.toFixed(3)} ${splitHorizontally ? ">" : "<="} ${RANDOM_DIRECTION_THRESHOLD})`;
           }
         } else {
           splitHorizontally = canSplitH;
@@ -247,19 +235,25 @@ export function partitionBSP(): Pass<
 /**
  * Places rooms within BSP leaves
  */
-export function placeRooms(): Pass<DungeonStateArtifact, DungeonStateArtifact> {
+export function placeRooms(): Pass<
+  DungeonStateArtifact,
+  DungeonStateArtifact,
+  "rooms"
+> {
   return {
     id: "bsp.place-rooms",
     inputType: "dungeon-state",
     outputType: "dungeon-state",
+    requiredStreams: ["rooms"] as const,
     run(input, ctx) {
-      const config = { ...DEFAULT_BSP_CONFIG, ...ctx.config.bsp };
+      // Config is pre-validated with all defaults resolved
+      const config = ctx.config.bsp;
       const rng = ctx.streams.rooms; // Use rooms RNG stream
       const rooms: Room[] = [];
 
       const leaves = input.bspLeaves ?? [];
 
-      const roomPlacementChance = config.roomPlacementChance ?? 1.0;
+      const roomPlacementChance = config.roomPlacementChance;
 
       for (const leaf of leaves) {
         // Check room placement probability
@@ -291,12 +285,13 @@ export function placeRooms(): Pass<DungeonStateArtifact, DungeonStateArtifact> {
         }
 
         // Try to select a template (70% chance for variety)
+        // Templates define their own minLeafSize requirements
         const template = selectTemplateForLeaf(
           COMBINED_TEMPLATES,
           maxWidth,
           maxHeight,
           () => rng.next(),
-          { templateChance: 0.7, minLeafSize: 8 },
+          { templateChance: 0.7 },
         );
 
         let roomWidth: number;
@@ -369,7 +364,7 @@ export function placeRooms(): Pass<DungeonStateArtifact, DungeonStateArtifact> {
           centerX,
           centerY,
           type: "normal",
-          seed: Math.floor(rng.next() * 0xffffffff),
+          seed: Math.floor(rng.next() * MAX_UINT32),
           template: template ?? undefined,
         };
 
@@ -413,12 +408,14 @@ export function placeRooms(): Pass<DungeonStateArtifact, DungeonStateArtifact> {
  */
 export function buildConnectivity(): Pass<
   DungeonStateArtifact,
-  DungeonStateArtifact
+  DungeonStateArtifact,
+  never
 > {
   return {
     id: "bsp.build-connectivity",
     inputType: "dungeon-state",
     outputType: "dungeon-state",
+    requiredStreams: [] as const,
     run(input, ctx) {
       const rooms = input.rooms;
 
@@ -478,24 +475,24 @@ export function buildConnectivity(): Pass<
 }
 
 // =============================================================================
-// ASSIGN ROOM TYPES PASS
+// COMPUTE ROOM METADATA PASS
 // =============================================================================
 
 /**
- * Assigns semantic types to rooms based on position, size, and distance.
- * Entrance is the starting room (first or closest to corner).
- * Exit is the room furthest from entrance.
- * Boss room is large and near the exit.
- * Treasure rooms are small and off the main path.
+ * Computes structural metadata for rooms.
+ * Calculates connectionCount, isDeadEnd, and distanceFromEntrance.
+ * Does NOT assign game-specific types - that's the game layer's job.
  */
-export function assignRoomTypes(): Pass<
+export function computeRoomMetadata(): Pass<
   DungeonStateArtifact,
-  DungeonStateArtifact
+  DungeonStateArtifact,
+  never
 > {
   return {
-    id: "bsp.assign-room-types",
+    id: "bsp.compute-room-metadata",
     inputType: "dungeon-state",
     outputType: "dungeon-state",
+    requiredStreams: [] as const,
     run(input, ctx) {
       const rooms = input.rooms;
       const edges = input.edges;
@@ -514,7 +511,7 @@ export function assignRoomTypes(): Pass<
         adjacency.get(toId)?.add(fromId);
       }
 
-      // Find entrance (room closest to top-left corner)
+      // Find entrance room (closest to top-left corner)
       let entranceRoom = rooms[0];
       if (!entranceRoom) return input;
 
@@ -527,7 +524,7 @@ export function assignRoomTypes(): Pass<
         }
       }
 
-      // Calculate distances from entrance using BFS (index-based for O(1) dequeue)
+      // Calculate distances from entrance using BFS
       const distances = new Map<number, number>();
       const queue: number[] = [entranceRoom.id];
       let queueHead = 0;
@@ -546,94 +543,40 @@ export function assignRoomTypes(): Pass<
         }
       }
 
-      // Find exit (furthest room from entrance)
-      let exitRoom = entranceRoom;
-      let maxDist = 0;
-      for (const room of rooms) {
-        const dist = distances.get(room.id) ?? 0;
-        if (dist > maxDist) {
-          maxDist = dist;
-          exitRoom = room;
-        }
-      }
-
-      // Find boss room (second furthest, preferably large)
-      let bossRoom: Room | null = null;
-      let bossScore = -1;
-      for (const room of rooms) {
-        if (room.id === entranceRoom.id || room.id === exitRoom.id) continue;
-        const dist = distances.get(room.id) ?? 0;
-        const size = room.width * room.height;
-        const score = dist * 10 + size; // Prefer far and large
-        if (score > bossScore) {
-          bossScore = score;
-          bossRoom = room;
-        }
-      }
-
-      // Identify dead-end rooms for treasure (rooms with only 1 connection)
-      const treasureRooms = new Set<number>();
-      for (const room of rooms) {
-        if (room.id === entranceRoom.id || room.id === exitRoom.id) continue;
-        if (room.id === bossRoom?.id) continue;
-        const connections = adjacency.get(room.id)?.size ?? 0;
-        if (connections === 1) {
-          treasureRooms.add(room.id);
-        }
-      }
-
-      // Use room seed for deterministic secondary type assignment
-      const specialRooms = new Set<number>();
-
-      // Assign types based on analysis
-      const typedRooms: Room[] = rooms.map((room) => {
-        let roomType: RoomType = "normal";
-
-        if (room.id === entranceRoom.id) {
-          roomType = "entrance";
-          specialRooms.add(room.id);
-        } else if (room.id === exitRoom.id) {
-          roomType = "exit";
-          specialRooms.add(room.id);
-        } else if (room.id === bossRoom?.id) {
-          roomType = "boss";
-          specialRooms.add(room.id);
-        } else if (treasureRooms.has(room.id)) {
-          roomType = "treasure";
-          specialRooms.add(room.id);
-        } else {
-          // Use room seed for secondary types (library, armory)
-          const rng = new SeededRandom(room.seed);
-          const roll = rng.next();
-          if (roll < 0.1) {
-            roomType = "library";
-          } else if (roll < 0.2) {
-            roomType = "armory";
-          }
-        }
+      // Add structural metadata to each room
+      const roomsWithMetadata: Room[] = rooms.map((room) => {
+        const connectionCount = adjacency.get(room.id)?.size ?? 0;
+        const isDeadEnd = connectionCount === 1;
+        const distanceFromEntrance = distances.get(room.id) ?? 0;
 
         return {
           ...room,
-          type: roomType,
+          connectionCount,
+          isDeadEnd,
+          distanceFromEntrance,
         };
       });
 
+      const deadEndCount = roomsWithMetadata.filter((r) => r.isDeadEnd).length;
+      const maxDistance = Math.max(
+        ...roomsWithMetadata.map((r) => r.distanceFromEntrance ?? 0),
+      );
+
       ctx.trace.decision(
-        "bsp.assign-room-types",
-        "Room types assigned",
-        ["entrance", "exit", "boss", "treasure", "library", "armory", "normal"],
+        "bsp.compute-room-metadata",
+        "Room metadata computed",
+        ["connectionCount", "isDeadEnd", "distanceFromEntrance"],
         {
-          entrance: entranceRoom.id,
-          exit: exitRoom.id,
-          boss: bossRoom?.id,
-          treasure: treasureRooms.size,
+          totalRooms: rooms.length,
+          deadEnds: deadEndCount,
+          maxDistance,
         },
-        `Entrance: room ${entranceRoom.id}, Exit: room ${exitRoom.id}, Boss: room ${bossRoom?.id}, Treasures: ${treasureRooms.size}`,
+        `Computed metadata for ${rooms.length} rooms: ${deadEndCount} dead-ends, max distance ${maxDistance}`,
       );
 
       return {
         ...input,
-        rooms: typedRooms,
+        rooms: roomsWithMetadata,
       };
     },
   };
@@ -646,11 +589,16 @@ export function assignRoomTypes(): Pass<
 /**
  * Carves rooms into the grid
  */
-export function carveRooms(): Pass<DungeonStateArtifact, DungeonStateArtifact> {
+export function carveRooms(): Pass<
+  DungeonStateArtifact,
+  DungeonStateArtifact,
+  never
+> {
   return {
     id: "bsp.carve-rooms",
     inputType: "dungeon-state",
     outputType: "dungeon-state",
+    requiredStreams: [] as const,
     run(input, ctx) {
       const grid = input.grid;
       let templatedCount = 0;
@@ -700,14 +648,17 @@ export function carveRooms(): Pass<DungeonStateArtifact, DungeonStateArtifact> {
  */
 export function carveCorridors(): Pass<
   DungeonStateArtifact,
-  DungeonStateArtifact
+  DungeonStateArtifact,
+  "connections"
 > {
   return {
     id: "bsp.carve-corridors",
     inputType: "dungeon-state",
     outputType: "dungeon-state",
+    requiredStreams: ["connections"] as const,
     run(input, ctx) {
-      const config = { ...DEFAULT_BSP_CONFIG, ...ctx.config.bsp };
+      // Config is pre-validated with all defaults resolved
+      const config = ctx.config.bsp;
       const rng = ctx.streams.connections; // Use connections RNG stream
       const grid = input.grid;
       const rooms = input.rooms;
@@ -715,7 +666,6 @@ export function carveCorridors(): Pass<
 
       const roomMap = new Map(rooms.map((r) => [r.id, r]));
       const connections: Connection[] = [];
-      const halfWidth = Math.floor(config.corridorWidth / 2);
 
       for (const [fromId, toId] of edges) {
         const fromRoom = roomMap.get(fromId);
@@ -725,9 +675,9 @@ export function carveCorridors(): Pass<
         const from: Point = { x: fromRoom.centerX, y: fromRoom.centerY };
         const to: Point = { x: toRoom.centerX, y: toRoom.centerY };
 
-        const path: Point[] = [];
         const randomVal = rng.next();
         const horizontalFirst = randomVal > 0.5;
+        const corridorStyle = config.corridorStyle;
 
         ctx.trace.decision(
           "bsp.carve-corridors",
@@ -737,64 +687,33 @@ export function carveCorridors(): Pass<
           `Random: ${randomVal.toFixed(3)}`,
         );
 
-        if (horizontalFirst) {
-          // Horizontal segment first
-          const startX = Math.min(from.x, to.x);
-          const endX = Math.max(from.x, to.x);
-          for (let x = startX; x <= endX; x++) {
-            for (let dy = -halfWidth; dy <= halfWidth; dy++) {
-              const y = from.y + dy;
-              if (grid.isInBounds(x, y)) {
-                grid.set(x, y, CellType.FLOOR);
-                path.push({ x, y });
-              }
-            }
-          }
-
-          // Vertical segment
-          const startY = Math.min(from.y, to.y);
-          const endY = Math.max(from.y, to.y);
-          for (let y = startY; y <= endY; y++) {
-            for (let dx = -halfWidth; dx <= halfWidth; dx++) {
-              const x = to.x + dx;
-              if (grid.isInBounds(x, y)) {
-                grid.set(x, y, CellType.FLOOR);
-                path.push({ x, y });
-              }
-            }
-          }
+        let pathLength: number;
+        if (corridorStyle === "l-shaped") {
+          pathLength = carveLShapedCorridorFast(
+            grid,
+            from,
+            to,
+            config.corridorWidth,
+            horizontalFirst,
+          );
         } else {
-          // Vertical segment first
-          const startY = Math.min(from.y, to.y);
-          const endY = Math.max(from.y, to.y);
-          for (let y = startY; y <= endY; y++) {
-            for (let dx = -halfWidth; dx <= halfWidth; dx++) {
-              const x = from.x + dx;
-              if (grid.isInBounds(x, y)) {
-                grid.set(x, y, CellType.FLOOR);
-                path.push({ x, y });
-              }
-            }
-          }
-
-          // Horizontal segment
-          const startX = Math.min(from.x, to.x);
-          const endX = Math.max(from.x, to.x);
-          for (let x = startX; x <= endX; x++) {
-            for (let dy = -halfWidth; dy <= halfWidth; dy++) {
-              const y = to.y + dy;
-              if (grid.isInBounds(x, y)) {
-                grid.set(x, y, CellType.FLOOR);
-                path.push({ x, y });
-              }
-            }
-          }
+          const path = carveCorridor(
+            grid,
+            from,
+            to,
+            {
+              width: config.corridorWidth,
+              style: corridorStyle,
+            },
+            horizontalFirst,
+          );
+          pathLength = path.length;
         }
 
         connections.push({
           fromRoomId: fromId,
           toRoomId: toId,
-          path,
+          pathLength,
         });
       }
 
@@ -803,7 +722,7 @@ export function carveCorridors(): Pass<
         "Corridors carved",
         [],
         connections.length,
-        `Carved ${connections.length} corridors with width ${config.corridorWidth}`,
+        `Carved ${connections.length} ${config.corridorStyle} corridors with width ${config.corridorWidth}`,
       );
 
       return {
@@ -815,209 +734,19 @@ export function carveCorridors(): Pass<
 }
 
 // =============================================================================
-// CALCULATE SPAWNS PASS
+// PLACE ENTRANCE/EXIT PASS
 // =============================================================================
 
 /**
- * Calculates spawn points for entrance, exit, enemies, and treasure
+ * Places entrance and exit spawn points only.
+ * Game content (enemies, treasures) should be handled by the game layer.
  */
-export function calculateSpawns(): Pass<
+export function placeEntranceExit(): Pass<
   DungeonStateArtifact,
-  DungeonStateArtifact
+  DungeonStateArtifact,
+  never
 > {
-  return {
-    id: "bsp.calculate-spawns",
-    inputType: "dungeon-state",
-    outputType: "dungeon-state",
-    run(input, ctx) {
-      const rooms = input.rooms;
-      const grid = input.grid;
-
-      if (rooms.length === 0) {
-        return {
-          ...input,
-          spawns: [],
-        };
-      }
-
-      const rng = ctx.streams.details; // Use details RNG stream
-      const spawns: SpawnPoint[] = [];
-
-      // Find entrance (first room)
-      const entranceRoom = rooms[0];
-      if (!entranceRoom) return { ...input, spawns: [] };
-
-      spawns.push({
-        position: { x: entranceRoom.centerX, y: entranceRoom.centerY },
-        roomId: entranceRoom.id,
-        type: "entrance",
-        tags: ["spawn", "entrance"],
-        weight: 1,
-        distanceFromStart: 0,
-      });
-
-      // Find exit (furthest room from entrance)
-      let maxDist = 0;
-      let exitRoom: Room | null = null;
-
-      for (const room of rooms) {
-        if (room.id === entranceRoom.id) continue;
-        const dist =
-          Math.abs(room.centerX - entranceRoom.centerX) +
-          Math.abs(room.centerY - entranceRoom.centerY);
-        if (dist > maxDist) {
-          maxDist = dist;
-          exitRoom = room;
-        }
-      }
-
-      // If no other room, use the entrance as exit too
-      if (!exitRoom) {
-        exitRoom = entranceRoom;
-      }
-
-      spawns.push({
-        position: { x: exitRoom.centerX, y: exitRoom.centerY },
-        roomId: exitRoom.id,
-        type: "exit",
-        tags: ["exit"],
-        weight: 1,
-        distanceFromStart: maxDist,
-      });
-
-      ctx.trace.decision(
-        "bsp.calculate-spawns",
-        "Exit room selection",
-        rooms.map((r) => r.id),
-        exitRoom.id,
-        `Room ${exitRoom.id} is furthest from entrance (distance: ${maxDist})`,
-      );
-
-      // Add enemy and treasure spawns in other rooms
-      for (const room of rooms) {
-        if (room.id === entranceRoom.id || room.id === exitRoom.id) continue;
-
-        const dist =
-          Math.abs(room.centerX - entranceRoom.centerX) +
-          Math.abs(room.centerY - entranceRoom.centerY);
-
-        // Enemy spawn (70% chance)
-        const enemyRoll = rng.next();
-        if (enemyRoll < 0.7) {
-          spawns.push({
-            position: { x: room.centerX, y: room.centerY },
-            roomId: room.id,
-            type: "enemy",
-            tags: ["enemy"],
-            weight: maxDist > 0 ? dist / maxDist : 0,
-            distanceFromStart: dist,
-          });
-
-          ctx.trace.decision(
-            "bsp.calculate-spawns",
-            `Spawn enemy in room ${room.id}?`,
-            ["yes", "no"],
-            "yes",
-            `Roll ${enemyRoll.toFixed(3)} < 0.7`,
-          );
-        }
-
-        // Treasure spawn (30% chance) - verify position is on floor
-        const treasureRoll = rng.next();
-        if (treasureRoll < 0.3) {
-          const offsetX = range(() => rng.next(), -2, 2);
-          const offsetY = range(() => rng.next(), -2, 2);
-
-          // Calculate spawn position, clamping to room bounds
-          const spawnX = Math.max(
-            room.x + 1,
-            Math.min(room.x + room.width - 2, room.centerX + offsetX),
-          );
-          const spawnY = Math.max(
-            room.y + 1,
-            Math.min(room.y + room.height - 2, room.centerY + offsetY),
-          );
-
-          // Only add if position is valid floor
-          if (grid.get(spawnX, spawnY) === CellType.FLOOR) {
-            spawns.push({
-              position: { x: spawnX, y: spawnY },
-              roomId: room.id,
-              type: "treasure",
-              tags: ["treasure", "loot"],
-              weight: maxDist > 0 ? 1 - dist / maxDist : 1,
-              distanceFromStart: dist,
-            });
-
-            ctx.trace.decision(
-              "bsp.calculate-spawns",
-              `Spawn treasure in room ${room.id}?`,
-              ["yes", "no"],
-              "yes",
-              `Roll ${treasureRoll.toFixed(3)} < 0.3, position (${spawnX}, ${spawnY})`,
-            );
-          }
-        }
-      }
-
-      ctx.trace.decision(
-        "bsp.calculate-spawns",
-        "Total spawn points",
-        [],
-        spawns.length,
-        `${spawns.length} spawn points created`,
-      );
-
-      return {
-        ...input,
-        spawns,
-      };
-    },
-  };
-}
-
-// =============================================================================
-// FINALIZE DUNGEON PASS
-// =============================================================================
-
-/**
- * Converts dungeon state to final dungeon artifact with checksum
- */
-export function finalizeDungeon(): Pass<DungeonStateArtifact, DungeonArtifact> {
-  return {
-    id: "bsp.finalize",
-    inputType: "dungeon-state",
-    outputType: "dungeon",
-    run(input, ctx) {
-      const checksum = calculateChecksum(
-        input.grid,
-        input.rooms,
-        input.connections,
-        input.spawns,
-      );
-
-      ctx.trace.decision(
-        "bsp.finalize",
-        "Dungeon checksum",
-        [],
-        checksum,
-        `Checksum computed from grid, rooms, connections, and spawns`,
-      );
-
-      return {
-        type: "dungeon",
-        id: "dungeon",
-        width: input.width,
-        height: input.height,
-        terrain: input.grid.getRawDataCopy(), // Use copy for immutability
-        rooms: input.rooms,
-        connections: input.connections,
-        spawns: input.spawns,
-        checksum,
-        seed: ctx.seed,
-      };
-    },
-  };
+  return createPlaceEntranceExitPass("bsp");
 }
 
 // =============================================================================
@@ -1029,9 +758,8 @@ export const BSPPasses = {
   partitionBSP,
   placeRooms,
   buildConnectivity,
-  assignRoomTypes,
+  computeRoomMetadata,
   carveRooms,
   carveCorridors,
-  calculateSpawns,
-  finalizeDungeon,
+  placeEntranceExit,
 } as const;

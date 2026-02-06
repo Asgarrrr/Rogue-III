@@ -11,6 +11,7 @@ import { createTraceCollector } from "./trace";
 import type {
   Artifact,
   DungeonStateArtifact,
+  FullPassContext,
   GenerationConfig,
   Pass,
   PassContext,
@@ -19,15 +20,31 @@ import type {
   PipelineOptions,
   PipelineResult,
   PipelineSnapshot,
+  RNGStreamName,
   RNGStreams,
 } from "./types";
+import { validateConfig } from "./types";
 
 /**
- * Internal pipeline step representation
+ * Internal pipeline step representation.
+ * Uses RNGStreamName to accept passes with any stream requirements.
  */
 interface PipelineStep {
-  readonly pass: Pass<Artifact, Artifact>;
+  readonly pass: Pass<Artifact, Artifact, RNGStreamName>;
   readonly index: number;
+}
+
+/**
+ * Create an AbortError that works across runtimes.
+ * DOMException is not available in some Node runtimes.
+ */
+function createAbortError(message: string): Error {
+  if (typeof DOMException !== "undefined") {
+    return new DOMException(message, "AbortError");
+  }
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
 }
 
 /**
@@ -43,6 +60,15 @@ export function createRNGStreams(seed: DungeonSeed): RNGStreams {
 }
 
 /**
+ * Type guard for DungeonStateArtifact
+ */
+function isDungeonStateArtifact(
+  artifact: Artifact,
+): artifact is DungeonStateArtifact {
+  return artifact.type === "dungeon-state";
+}
+
+/**
  * Capture a snapshot of the current pipeline state
  */
 function captureSnapshot(
@@ -50,19 +76,25 @@ function captureSnapshot(
   passId: string,
   passIndex: number,
 ): PipelineSnapshot {
-  // Try to extract state from DungeonStateArtifact
-  const state = artifact as DungeonStateArtifact;
-  const hasGrid = state.grid && typeof state.grid.getRawDataCopy === "function";
+  if (isDungeonStateArtifact(artifact)) {
+    return {
+      passId,
+      passIndex,
+      timestamp: performance.now(),
+      terrain: artifact.grid.getRawDataCopy(),
+      roomCount: artifact.rooms.length,
+      connectionCount: artifact.connections.length,
+    };
+  }
 
+  // Non-dungeon-state artifacts: return minimal snapshot
   return {
     passId,
     passIndex,
     timestamp: performance.now(),
-    terrain: hasGrid ? state.grid.getRawDataCopy() : undefined,
-    roomCount: Array.isArray(state.rooms) ? state.rooms.length : 0,
-    connectionCount: Array.isArray(state.connections)
-      ? state.connections.length
-      : 0,
+    terrain: undefined,
+    roomCount: 0,
+    connectionCount: 0,
   };
 }
 
@@ -76,27 +108,411 @@ function collectPassMetrics(
   passIndex: number,
   durationMs: number,
 ): PassMetrics {
-  const state = artifact as DungeonStateArtifact;
-  const hasGrid = state.grid && typeof state.grid.countCells === "function";
-
-  let floorRatio = 0;
-  if (hasGrid) {
-    const totalCells = state.grid.width * state.grid.height;
-    const floorCells = state.grid.countCells(CellType.FLOOR);
-    floorRatio = totalCells > 0 ? floorCells / totalCells : 0;
+  if (!isDungeonStateArtifact(artifact)) {
+    return {
+      passId,
+      passIndex,
+      durationMs,
+      roomCount: 0,
+      connectionCount: 0,
+      spawnCount: 0,
+      floorRatio: 0,
+    };
   }
+
+  const totalCells = artifact.grid.width * artifact.grid.height;
+  const floorCells = artifact.grid.countCells(CellType.FLOOR);
+  const floorRatio = totalCells > 0 ? floorCells / totalCells : 0;
 
   return {
     passId,
     passIndex,
     durationMs,
-    roomCount: Array.isArray(state.rooms) ? state.rooms.length : 0,
-    connectionCount: Array.isArray(state.connections)
-      ? state.connections.length
-      : 0,
-    spawnCount: Array.isArray(state.spawns) ? state.spawns.length : 0,
+    roomCount: artifact.rooms.length,
+    connectionCount: artifact.connections.length,
+    spawnCount: artifact.spawns.length,
     floorRatio,
   };
+}
+
+/**
+ * Common setup for pipeline execution
+ */
+interface PipelineExecutionSetup {
+  readonly trace: ReturnType<typeof createTraceCollector>;
+  readonly streams: RNGStreams;
+  readonly rng: SeededRandom;
+  readonly ctx: PassContext;
+  readonly shouldCaptureSnapshots: boolean;
+  readonly snapshots: PipelineSnapshot[];
+  readonly startTime: number;
+}
+
+/**
+ * Initialize common state for both sync and async execution
+ */
+function setupPipelineExecution(
+  seed: DungeonSeed,
+  config: GenerationConfig,
+  options?: PipelineOptions | Omit<PipelineOptions, "signal">,
+): PipelineExecutionSetup {
+  const startTime = performance.now();
+  // Validate config once at pipeline start - all passes get validated config
+  const validatedConfig = validateConfig(config);
+  const trace = createTraceCollector(validatedConfig.trace);
+  const streams = createRNGStreams(seed);
+  const rng = new SeededRandom(seed.primary);
+  const snapshots: PipelineSnapshot[] = [];
+  const shouldCaptureSnapshots =
+    options?.captureSnapshots ?? validatedConfig.snapshots;
+
+  const ctx: PassContext = {
+    rng,
+    streams,
+    config: validatedConfig,
+    trace,
+    seed,
+  };
+
+  return {
+    trace,
+    streams,
+    rng,
+    ctx,
+    shouldCaptureSnapshots,
+    snapshots,
+    startTime,
+  };
+}
+
+/**
+ * Handle common pass execution side effects (metrics, progress, snapshots)
+ */
+function handlePassSideEffects(
+  current: Artifact,
+  step: PipelineStep,
+  stepIndex: number,
+  stepDuration: number,
+  totalSteps: number,
+  snapshots: PipelineSnapshot[],
+  shouldCaptureSnapshots: boolean,
+  options?: PipelineOptions | Omit<PipelineOptions, "signal">,
+): void {
+  // Capture snapshot after each pass
+  if (shouldCaptureSnapshots) {
+    snapshots.push(captureSnapshot(current, step.pass.id, stepIndex));
+  }
+
+  // Emit lightweight metrics (much cheaper than snapshots)
+  if (options?.onPassMetrics) {
+    const metrics = collectPassMetrics(
+      current,
+      step.pass.id,
+      stepIndex,
+      stepDuration,
+    );
+    options.onPassMetrics(metrics);
+  }
+
+  if (options?.onProgress) {
+    const progress = Math.round(((stepIndex + 1) / totalSteps) * 100);
+    options.onProgress(progress, step.pass.id);
+  }
+}
+
+/**
+ * Create a scoped context for a pass based on its requiredStreams.
+ *
+ * The generic TStreams parameter preserves the stream type from the pass,
+ * allowing TypeScript to enforce that passes only access declared streams.
+ */
+function createScopedContext<TStreams extends RNGStreamName>(
+  fullCtx: FullPassContext,
+  requiredStreams: readonly TStreams[],
+): PassContext<TStreams> {
+  // Empty streams = pass doesn't use RNG, return empty streams object
+  if (requiredStreams.length === 0) {
+    return {
+      ...fullCtx,
+      streams: {} as Pick<RNGStreams, TStreams>,
+    };
+  }
+
+  // Create scoped streams object with only the required streams
+  const scopedStreams = {} as Pick<RNGStreams, TStreams>;
+  for (const streamName of requiredStreams) {
+    (scopedStreams as Record<string, SeededRandom>)[streamName] =
+      fullCtx.streams[streamName];
+  }
+
+  return {
+    ...fullCtx,
+    streams: scopedStreams,
+  };
+}
+
+/**
+ * Core pipeline execution logic - runs the pass loop.
+ * Returns the artifact and whether we encountered an async pass.
+ */
+function executePasses(
+  steps: readonly PipelineStep[],
+  input: Artifact,
+  ctx: FullPassContext,
+  trace: ReturnType<typeof createTraceCollector>,
+  snapshots: PipelineSnapshot[],
+  shouldCaptureSnapshots: boolean,
+  options: PipelineOptions | Omit<PipelineOptions, "signal"> | undefined,
+  checkAbort: boolean,
+): {
+  current: Artifact;
+  asyncResult?: Promise<Artifact>;
+  stepIndex: number;
+  step?: PipelineStep;
+} {
+  let current: Artifact = input;
+  const totalSteps = steps.length;
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[i];
+    if (!step) continue;
+
+    // Check for abort signal
+    if (checkAbort && (options as PipelineOptions)?.signal?.aborted) {
+      throw createAbortError("Pipeline aborted");
+    }
+
+    // Create scoped context for this pass
+    const scopedCtx = createScopedContext(ctx, step.pass.requiredStreams);
+
+    trace.start(step.pass.id);
+    const stepStart = performance.now();
+
+    const result = step.pass.run(current, scopedCtx);
+
+    // If we get a Promise, return it for async handling
+    if (result instanceof Promise) {
+      return {
+        current,
+        asyncResult: result,
+        stepIndex: i,
+        step,
+      };
+    }
+
+    current = result;
+
+    const stepDuration = performance.now() - stepStart;
+    trace.end(step.pass.id, stepDuration);
+
+    handlePassSideEffects(
+      current,
+      step,
+      i,
+      stepDuration,
+      totalSteps,
+      snapshots,
+      shouldCaptureSnapshots,
+      options,
+    );
+  }
+
+  return { current, stepIndex: steps.length };
+}
+
+/**
+ * Build successful result
+ */
+function buildSuccessResult<TCurrent extends Artifact>(
+  current: Artifact,
+  trace: ReturnType<typeof createTraceCollector>,
+  snapshots: PipelineSnapshot[],
+  shouldCaptureSnapshots: boolean,
+  startTime: number,
+): PipelineResult<TCurrent> {
+  return {
+    success: true,
+    artifact: current as TCurrent,
+    trace: trace.getEvents(),
+    snapshots: shouldCaptureSnapshots ? snapshots : [],
+    durationMs: performance.now() - startTime,
+  };
+}
+
+/**
+ * Build error result
+ */
+function buildErrorResult<TCurrent extends Artifact>(
+  error: unknown,
+  stepIndex: number,
+  step: PipelineStep | undefined,
+  trace: ReturnType<typeof createTraceCollector>,
+  snapshots: PipelineSnapshot[],
+  shouldCaptureSnapshots: boolean,
+  startTime: number,
+): PipelineResult<TCurrent> {
+  const originalError =
+    error instanceof Error ? error : new Error(String(error));
+
+  // Preserve AbortError without wrapping
+  if (originalError.name === "AbortError") {
+    return {
+      success: false,
+      error: originalError,
+      trace: trace.getEvents(),
+      snapshots: shouldCaptureSnapshots ? snapshots : [],
+      durationMs: performance.now() - startTime,
+    };
+  }
+
+  const passId = step?.pass.id ?? "unknown";
+  const enhancedError = new Error(
+    `Pipeline failed at step ${stepIndex} (pass: ${passId}): ${originalError.message}`,
+  );
+  enhancedError.cause = originalError;
+
+  return {
+    success: false,
+    error: enhancedError,
+    trace: trace.getEvents(),
+    snapshots: shouldCaptureSnapshots ? snapshots : [],
+    durationMs: performance.now() - startTime,
+  };
+}
+
+/**
+ * Synchronous pipeline execution.
+ */
+function runPipelineSync<TStart extends Artifact, TCurrent extends Artifact>(
+  steps: readonly PipelineStep[],
+  input: TStart,
+  seed: DungeonSeed,
+  config: GenerationConfig,
+  options?: Omit<PipelineOptions, "signal">,
+): PipelineResult<TCurrent> {
+  const { trace, ctx, snapshots, shouldCaptureSnapshots, startTime } =
+    setupPipelineExecution(seed, config, options);
+
+  try {
+    const result = executePasses(
+      steps,
+      input,
+      ctx,
+      trace,
+      snapshots,
+      shouldCaptureSnapshots,
+      options,
+      false, // no abort checking in sync mode
+    );
+
+    // If we got an async result, that's an error in sync mode
+    if (result.asyncResult) {
+      throw new Error(
+        `Pass ${result.step?.pass.id} returned a Promise in synchronous execution. ` +
+          `Use generateAsync() or pipeline.run() for async passes.`,
+      );
+    }
+
+    return buildSuccessResult<TCurrent>(
+      result.current,
+      trace,
+      snapshots,
+      shouldCaptureSnapshots,
+      startTime,
+    );
+  } catch (error) {
+    return buildErrorResult<TCurrent>(
+      error,
+      -1,
+      undefined,
+      trace,
+      snapshots,
+      shouldCaptureSnapshots,
+      startTime,
+    );
+  }
+}
+
+/**
+ * Asynchronous pipeline execution.
+ */
+async function runPipelineAsync<
+  TStart extends Artifact,
+  TCurrent extends Artifact,
+>(
+  steps: readonly PipelineStep[],
+  input: TStart,
+  seed: DungeonSeed,
+  config: GenerationConfig,
+  options?: PipelineOptions,
+): Promise<PipelineResult<TCurrent>> {
+  const { trace, ctx, snapshots, shouldCaptureSnapshots, startTime } =
+    setupPipelineExecution(seed, config, options);
+
+  try {
+    let current: Artifact = input;
+    let startIndex = 0;
+    const totalSteps = steps.length;
+
+    // Loop to handle async passes - resume from where we left off
+    while (startIndex < steps.length) {
+      // Run sync portion
+      const remainingSteps = steps.slice(startIndex);
+      const result = executePasses(
+        remainingSteps,
+        current,
+        ctx,
+        trace,
+        snapshots,
+        shouldCaptureSnapshots,
+        options,
+        true, // check abort in async mode
+      );
+
+      // If we hit an async pass, await it and continue
+      if (result.asyncResult && result.step) {
+        const stepStart = performance.now();
+        current = await result.asyncResult;
+        const stepDuration = performance.now() - stepStart;
+
+        trace.end(result.step.pass.id, stepDuration);
+        handlePassSideEffects(
+          current,
+          result.step,
+          startIndex + result.stepIndex,
+          stepDuration,
+          totalSteps,
+          snapshots,
+          shouldCaptureSnapshots,
+          options,
+        );
+
+        startIndex = startIndex + result.stepIndex + 1;
+      } else {
+        // All done
+        current = result.current;
+        break;
+      }
+    }
+
+    return buildSuccessResult<TCurrent>(
+      current,
+      trace,
+      snapshots,
+      shouldCaptureSnapshots,
+      startTime,
+    );
+  } catch (error) {
+    return buildErrorResult<TCurrent>(
+      error,
+      -1,
+      undefined,
+      trace,
+      snapshots,
+      shouldCaptureSnapshots,
+      startTime,
+    );
+  }
 }
 
 /**
@@ -135,14 +551,18 @@ export class PipelineBuilder<
   }
 
   /**
-   * Add a pass to the pipeline
+   * Add a pass to the pipeline.
+   * Accepts passes with any RNG stream requirements.
    */
-  pipe<TNext extends Artifact>(
-    pass: Pass<TCurrent, TNext>,
+  pipe<TNext extends Artifact, TStreams extends RNGStreamName = never>(
+    pass: Pass<TCurrent, TNext, TStreams>,
   ): PipelineBuilder<TStart, TNext> {
     const newSteps = [
       ...this.steps,
-      { pass: pass as Pass<Artifact, Artifact>, index: this.steps.length },
+      {
+        pass: pass as Pass<Artifact, Artifact, RNGStreamName>,
+        index: this.steps.length,
+      },
     ];
     return new PipelineBuilder<TStart, TNext>(this.id, this.config, newSteps);
   }
@@ -156,9 +576,9 @@ export class PipelineBuilder<
    * Note: The union type TCurrent | TNext is necessary because at compile time
    * we don't know which branch will be taken.
    */
-  when<TNext extends Artifact>(
+  when<TNext extends Artifact, TStreams extends RNGStreamName = never>(
     condition: (config: GenerationConfig) => boolean,
-    pass: Pass<TCurrent, TNext>,
+    pass: Pass<TCurrent, TNext, TStreams>,
   ): PipelineBuilder<TStart, TCurrent | TNext> {
     if (condition(this.config)) {
       // Condition met: add the pass, output type becomes TNext
@@ -182,87 +602,18 @@ export class PipelineBuilder<
     return {
       id: pipelineId,
 
-      async run(
+      run(
         input: TStart,
         seed: DungeonSeed,
         options?: PipelineOptions,
       ): Promise<PipelineResult<TCurrent>> {
-        const startTime = performance.now();
-        const trace = createTraceCollector(config.trace ?? false);
-        const streams = createRNGStreams(seed);
-        const rng = new SeededRandom(seed.primary);
-        const snapshots: PipelineSnapshot[] = [];
-        const shouldCaptureSnapshots =
-          options?.captureSnapshots ?? config.snapshots ?? false;
-
-        const ctx: PassContext = {
-          rng,
-          streams,
-          config,
-          trace,
+        return runPipelineAsync<TStart, TCurrent>(
+          steps,
+          input,
           seed,
-        };
-
-        let current: Artifact = input;
-        const totalSteps = steps.length;
-
-        try {
-          for (let i = 0; i < steps.length; i++) {
-            const step = steps[i];
-            if (!step) continue;
-
-            // Check for abort signal
-            if (options?.signal?.aborted) {
-              throw new DOMException("Pipeline aborted", "AbortError");
-            }
-
-            trace.start(step.pass.id);
-            const stepStart = performance.now();
-
-            const result = step.pass.run(current, ctx);
-            current = result instanceof Promise ? await result : result;
-
-            const stepDuration = performance.now() - stepStart;
-            trace.end(step.pass.id, stepDuration);
-
-            // Capture snapshot after each pass
-            if (shouldCaptureSnapshots) {
-              snapshots.push(captureSnapshot(current, step.pass.id, i));
-            }
-
-            // Emit lightweight metrics (much cheaper than snapshots)
-            if (options?.onPassMetrics) {
-              const metrics = collectPassMetrics(
-                current,
-                step.pass.id,
-                i,
-                stepDuration,
-              );
-              options.onPassMetrics(metrics);
-            }
-
-            if (options?.onProgress) {
-              const progress = Math.round(((i + 1) / totalSteps) * 100);
-              options.onProgress(progress, step.pass.id);
-            }
-          }
-
-          return {
-            success: true,
-            artifact: current as TCurrent,
-            trace: trace.getEvents(),
-            snapshots: shouldCaptureSnapshots ? snapshots : undefined,
-            durationMs: performance.now() - startTime,
-          };
-        } catch (error) {
-          return {
-            success: false,
-            error: error instanceof Error ? error : new Error(String(error)),
-            trace: trace.getEvents(),
-            snapshots: shouldCaptureSnapshots ? snapshots : undefined,
-            durationMs: performance.now() - startTime,
-          };
-        }
+          config,
+          options,
+        );
       },
 
       runSync(
@@ -270,85 +621,13 @@ export class PipelineBuilder<
         seed: DungeonSeed,
         options?: Omit<PipelineOptions, "signal">,
       ): PipelineResult<TCurrent> {
-        const startTime = performance.now();
-        const trace = createTraceCollector(config.trace ?? false);
-        const streams = createRNGStreams(seed);
-        const rng = new SeededRandom(seed.primary);
-        const snapshots: PipelineSnapshot[] = [];
-        const shouldCaptureSnapshots =
-          options?.captureSnapshots ?? config.snapshots ?? false;
-
-        const ctx: PassContext = {
-          rng,
-          streams,
-          config,
-          trace,
+        return runPipelineSync<TStart, TCurrent>(
+          steps,
+          input,
           seed,
-        };
-
-        let current: Artifact = input;
-        const totalSteps = steps.length;
-
-        try {
-          for (let i = 0; i < steps.length; i++) {
-            const step = steps[i];
-            if (!step) continue;
-
-            trace.start(step.pass.id);
-            const stepStart = performance.now();
-
-            const result = step.pass.run(current, ctx);
-
-            // For sync execution, we don't await promises
-            if (result instanceof Promise) {
-              throw new Error(
-                `Pass ${step.pass.id} returned a Promise in synchronous execution`,
-              );
-            }
-
-            current = result;
-
-            const stepDuration = performance.now() - stepStart;
-            trace.end(step.pass.id, stepDuration);
-
-            // Capture snapshot after each pass
-            if (shouldCaptureSnapshots) {
-              snapshots.push(captureSnapshot(current, step.pass.id, i));
-            }
-
-            // Emit lightweight metrics (much cheaper than snapshots)
-            if (options?.onPassMetrics) {
-              const metrics = collectPassMetrics(
-                current,
-                step.pass.id,
-                i,
-                stepDuration,
-              );
-              options.onPassMetrics(metrics);
-            }
-
-            if (options?.onProgress) {
-              const progress = Math.round(((i + 1) / totalSteps) * 100);
-              options.onProgress(progress, step.pass.id);
-            }
-          }
-
-          return {
-            success: true,
-            artifact: current as TCurrent,
-            trace: trace.getEvents(),
-            snapshots: shouldCaptureSnapshots ? snapshots : undefined,
-            durationMs: performance.now() - startTime,
-          };
-        } catch (error) {
-          return {
-            success: false,
-            error: error instanceof Error ? error : new Error(String(error)),
-            trace: trace.getEvents(),
-            snapshots: shouldCaptureSnapshots ? snapshots : undefined,
-            durationMs: performance.now() - startTime,
-          };
-        }
+          config,
+          options,
+        );
       },
     };
   }

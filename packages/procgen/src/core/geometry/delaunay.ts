@@ -5,6 +5,7 @@
  * Produces approximately 3n edges instead of n(n-1)/2 for complete graph.
  */
 
+import { UnionFind } from "../algorithms";
 import type { Point } from "./types";
 
 /**
@@ -105,9 +106,32 @@ function createSuperTriangle(points: readonly Point[]): [Point, Point, Point] {
  * @param points Array of points to triangulate
  * @returns Array of edges forming the triangulation
  */
+// Maximum points for edge encoding (allows for efficient numeric keys)
+const MAX_POINTS = 65536;
+
+/**
+ * Encode an edge as a single numeric key for efficient Set/Map operations
+ */
+function encodeEdge(p1: number, p2: number): number {
+  return p1 < p2 ? p1 * MAX_POINTS + p2 : p2 * MAX_POINTS + p1;
+}
+
+/**
+ * Decode a numeric edge key back to point indices
+ */
+function decodeEdge(key: number): [number, number] {
+  return [Math.floor(key / MAX_POINTS), key % MAX_POINTS];
+}
+
 export function delaunayTriangulation(points: readonly Point[]): Edge[] {
   if (points.length < 2) {
     return [];
+  }
+
+  if (points.length > MAX_POINTS) {
+    throw new RangeError(
+      `delaunayTriangulation supports up to ${MAX_POINTS} points (received ${points.length})`,
+    );
   }
 
   if (points.length === 2) {
@@ -166,40 +190,28 @@ export function delaunayTriangulation(points: readonly Point[]): Edge[] {
     }
 
     // Find the polygon hole boundary
-    const polygon: [number, number][] = [];
+    // Count edge occurrences to find boundary edges in O(k) instead of O(k²)
+    const edgeCounts = new Map<number, number>();
 
+    // Count how many times each edge appears across all bad triangles
     for (const tri of badTriangles) {
-      const edges: [number, number][] = [
+      const triEdges: [number, number][] = [
         [tri.p1, tri.p2],
         [tri.p2, tri.p3],
         [tri.p3, tri.p1],
       ];
+      for (const [a, b] of triEdges) {
+        const key = encodeEdge(a, b);
+        edgeCounts.set(key, (edgeCounts.get(key) ?? 0) + 1);
+      }
+    }
 
-      for (const edge of edges) {
-        // Check if this edge is shared with another bad triangle
-        let isShared = false;
-        for (const other of badTriangles) {
-          if (other === tri) continue;
-          const otherEdges: [number, number][] = [
-            [other.p1, other.p2],
-            [other.p2, other.p3],
-            [other.p3, other.p1],
-          ];
-          for (const otherEdge of otherEdges) {
-            if (
-              (edge[0] === otherEdge[0] && edge[1] === otherEdge[1]) ||
-              (edge[0] === otherEdge[1] && edge[1] === otherEdge[0])
-            ) {
-              isShared = true;
-              break;
-            }
-          }
-          if (isShared) break;
-        }
-
-        if (!isShared) {
-          polygon.push(edge);
-        }
+    // Boundary edges appear exactly once (not shared)
+    const polygon: [number, number][] = [];
+    for (const [key, count] of edgeCounts) {
+      if (count === 1) {
+        const [a, b] = decodeEdge(key);
+        polygon.push([a, b]);
       }
     }
 
@@ -226,7 +238,7 @@ export function delaunayTriangulation(points: readonly Point[]): Edge[] {
   }
 
   // Extract edges from final triangulation, excluding super-triangle vertices
-  const edgeSet = new Set<string>();
+  const edgeSet = new Set<number>();
   const edges: Edge[] = [];
 
   for (const tri of triangles) {
@@ -247,7 +259,7 @@ export function delaunayTriangulation(points: readonly Point[]): Edge[] {
 
     for (const [from, to] of triEdges) {
       // Normalize edge direction for deduplication
-      const key = from < to ? `${from},${to}` : `${to},${from}`;
+      const key = encodeEdge(from, to);
       if (!edgeSet.has(key)) {
         edgeSet.add(key);
         edges.push({ from, to });
@@ -286,49 +298,13 @@ export function buildMSTFromEdges(
   weightedEdges.sort((a, b) => a.weight - b.weight);
 
   // Union-Find
-  const parent = new Map<number, number>();
-  const rank = new Map<number, number>();
-
-  for (let i = 0; i < points.length; i++) {
-    parent.set(i, i);
-    rank.set(i, 0);
-  }
-
-  function find(x: number): number {
-    const px = parent.get(x);
-    if (px === undefined) return x;
-    if (px !== x) {
-      const root = find(px);
-      parent.set(x, root);
-      return root;
-    }
-    return px;
-  }
-
-  function union(x: number, y: number): boolean {
-    const px = find(x);
-    const py = find(y);
-    if (px === py) return false;
-
-    const rx = rank.get(px) ?? 0;
-    const ry = rank.get(py) ?? 0;
-
-    if (rx < ry) {
-      parent.set(px, py);
-    } else if (rx > ry) {
-      parent.set(py, px);
-    } else {
-      parent.set(py, px);
-      rank.set(px, rx + 1);
-    }
-    return true;
-  }
+  const uf = new UnionFind(points.length);
 
   // Build MST
   const mst: [number, number][] = [];
 
   for (const edge of weightedEdges) {
-    if (union(edge.from, edge.to)) {
+    if (uf.union(edge.from, edge.to)) {
       mst.push([edge.from, edge.to]);
       if (mst.length === points.length - 1) break;
     }

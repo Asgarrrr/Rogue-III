@@ -5,6 +5,12 @@
  * Divides the dungeon into zones and applies different algorithms per zone.
  */
 
+// Common passes
+import {
+  createInitializeStatePass,
+  createPlaceEntranceExitPass,
+  finalizeDungeon,
+} from "../../passes/common";
 import { PipelineBuilder } from "../../pipeline/builder";
 import type {
   DungeonArtifact,
@@ -17,30 +23,37 @@ import type {
   ValidationArtifact,
   Violation,
 } from "../../pipeline/types";
-import { DEFAULT_BSP_CONFIG, DEFAULT_CELLULAR_CONFIG } from "../../pipeline/types";
-import type { HybridConfig, ZoneDefinition, ZoneSplitResult } from "./types";
+import {
+  DEFAULT_BSP_CONFIG,
+  DEFAULT_CELLULAR_CONFIG,
+} from "../../pipeline/types";
+// Hybrid-specific passes
+import { connectZones, mergeZones, processZones } from "./passes";
+import type {
+  HybridConfig,
+  HybridConfigPatch,
+  HybridStateArtifact,
+} from "./types";
 import { DEFAULT_HYBRID_CONFIG } from "./types";
 import { splitIntoZones } from "./zone-splitter";
 
-// BSP passes for constructed zones
-import {
-  buildConnectivity,
-  calculateSpawns,
-  carveCorridors,
-  carveRooms,
-  finalizeDungeon,
-  initializeState,
-  partitionBSP,
-  placeRooms,
-  assignRoomTypes,
-} from "../bsp/passes";
-
 /**
- * Extended artifact for hybrid generation carrying zone info
+ * Merge hybrid config with deep merge for zoneSplit.
  */
-interface HybridStateArtifact extends DungeonStateArtifact {
-  readonly zones?: readonly ZoneDefinition[];
-  readonly zoneSplitResult?: ZoneSplitResult;
+function mergeHybridConfig(
+  base: Readonly<HybridConfig>,
+  patch?: HybridConfigPatch,
+): Readonly<HybridConfig> {
+  const mergedZoneSplit = Object.freeze({
+    ...base.zoneSplit,
+    ...(patch?.zoneSplit ?? {}),
+  });
+
+  return Object.freeze({
+    ...base,
+    ...(patch ?? {}),
+    zoneSplit: mergedZoneSplit,
+  });
 }
 
 /**
@@ -52,17 +65,18 @@ export class HybridGenerator implements Generator {
   readonly description =
     "Generates varied dungeons by combining rectangular rooms (BSP) with organic caves (Cellular)";
 
-  private config: HybridConfig = DEFAULT_HYBRID_CONFIG;
+  private readonly config: Readonly<HybridConfig>;
 
-  constructor(config?: Partial<HybridConfig>) {
-    if (config) {
-      this.config = { ...DEFAULT_HYBRID_CONFIG, ...config };
-    }
+  constructor(
+    config?: HybridConfigPatch,
+    baseConfig: Readonly<HybridConfig> = DEFAULT_HYBRID_CONFIG,
+  ) {
+    this.config = mergeHybridConfig(baseConfig, config);
   }
 
   getDefaultConfig(): Partial<GenerationConfig> {
     return {
-      algorithm: "bsp", // Fallback algorithm
+      algorithm: "hybrid",
       bsp: DEFAULT_BSP_CONFIG,
       cellular: DEFAULT_CELLULAR_CONFIG,
     };
@@ -110,29 +124,34 @@ export class HybridGenerator implements Generator {
       type: "validation",
       id: "hybrid-config-validation",
       violations,
-      passed: violations.every((v) => v.severity !== "error"),
+      success: violations.every((v) => v.severity !== "error"),
     };
   }
 
-  createPipeline(config: GenerationConfig): Pipeline<EmptyArtifact, DungeonArtifact> {
-    // For now, use BSP pipeline as base with zone awareness
-    // In future iterations, this will dynamically compose BSP and Cellular passes per zone
+  createPipeline(
+    config: GenerationConfig,
+  ): Pipeline<EmptyArtifact, DungeonArtifact> {
+    // Hybrid pipeline: splits into zones, processes each with its algorithm, then merges
     const hybridConfig = this.config;
 
     const pipeline = PipelineBuilder.create<EmptyArtifact>(
       "hybrid-pipeline",
       config,
     )
-      .pipe(initializeState())
+      .pipe(createInitializeStatePass("hybrid"))
       .pipe({
         id: "hybrid-zone-split",
         inputType: "dungeon-state" as const,
         outputType: "dungeon-state" as const,
-        run: (artifact: DungeonStateArtifact, ctx: PassContext): HybridStateArtifact => {
-          const { rng } = ctx;
+        requiredStreams: ["layout"] as const,
+        run: (
+          artifact: DungeonStateArtifact,
+          ctx: PassContext<"layout">,
+        ): HybridStateArtifact => {
+          const rng = ctx.streams.layout;
           const { width, height } = artifact;
 
-          // Split into zones
+          // Split into zones with algorithm assignments
           const zoneSplitResult = splitIntoZones(
             width,
             height,
@@ -143,18 +162,15 @@ export class HybridGenerator implements Generator {
           return {
             ...artifact,
             zones: zoneSplitResult.zones,
-            zoneSplitResult,
+            transitions: zoneSplitResult.transitions,
           };
         },
       })
-      .pipe(partitionBSP())
-      .pipe(placeRooms())
-      .pipe(buildConnectivity())
-      .pipe(assignRoomTypes())
-      .pipe(carveRooms())
-      .pipe(carveCorridors())
-      .pipe(calculateSpawns())
-      .pipe(finalizeDungeon())
+      .pipe(processZones()) // Process each zone with BSP or Cellular
+      .pipe(mergeZones()) // Merge zone grids into main grid
+      .pipe(connectZones()) // Connect zones with transitions
+      .pipe(createPlaceEntranceExitPass("hybrid"))
+      .pipe(finalizeDungeon("hybrid"))
       .build();
 
     return pipeline;
@@ -163,26 +179,23 @@ export class HybridGenerator implements Generator {
   /**
    * Get the current hybrid configuration
    */
-  getHybridConfig(): HybridConfig {
+  getHybridConfig(): Readonly<HybridConfig> {
     return this.config;
   }
 
   /**
-   * Update the hybrid configuration
+   * Return a new generator with merged hybrid configuration.
    */
-  setHybridConfig(config: Partial<HybridConfig>): void {
-    this.config = { ...this.config, ...config };
+  withHybridConfig(config: HybridConfigPatch): HybridGenerator {
+    return new HybridGenerator(config, this.config);
   }
 }
 
 /**
  * Create a hybrid generator with custom configuration
  */
-export function createHybridGenerator(config?: Partial<HybridConfig>): HybridGenerator {
+export function createHybridGenerator(
+  config?: HybridConfigPatch,
+): HybridGenerator {
   return new HybridGenerator(config);
 }
-
-/**
- * Default hybrid generator instance
- */
-export const hybridGenerator = new HybridGenerator();

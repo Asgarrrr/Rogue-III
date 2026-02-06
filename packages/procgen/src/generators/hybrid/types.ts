@@ -4,6 +4,9 @@
  * Types for the hybrid BSP + Cellular generator.
  */
 
+import type { Grid } from "../../core/grid";
+import type { DungeonStateArtifact, Room } from "../../pipeline/types";
+
 /**
  * Zone type determines the generation algorithm
  */
@@ -77,14 +80,15 @@ export interface ZoneSplitConfig {
 /**
  * Default zone split configuration
  */
-export const DEFAULT_ZONE_SPLIT_CONFIG: ZoneSplitConfig = {
-  minZones: 2,
-  maxZones: 4,
-  naturalRatio: 0.3,
-  transitionWidth: 3,
-  minZoneSize: 20,
-  splitDirection: "auto",
-};
+export const DEFAULT_ZONE_SPLIT_CONFIG: Readonly<ZoneSplitConfig> =
+  Object.freeze({
+    minZones: 2,
+    maxZones: 4,
+    naturalRatio: 0.3,
+    transitionWidth: 3,
+    minZoneSize: 20,
+    splitDirection: "auto",
+  });
 
 /**
  * Hybrid generator configuration
@@ -104,14 +108,21 @@ export interface HybridConfig {
 }
 
 /**
+ * Partial config patch with deep partial support for zoneSplit.
+ */
+export type HybridConfigPatch = Partial<Omit<HybridConfig, "zoneSplit">> & {
+  readonly zoneSplit?: Partial<ZoneSplitConfig>;
+};
+
+/**
  * Default hybrid configuration
  */
-export const DEFAULT_HYBRID_CONFIG: HybridConfig = {
+export const DEFAULT_HYBRID_CONFIG: Readonly<HybridConfig> = Object.freeze({
   zoneSplit: DEFAULT_ZONE_SPLIT_CONFIG,
   useSignaturePrefabs: true,
   prefabChance: 0.7,
   enableZoneTheming: true,
-};
+});
 
 /**
  * Zone transition (connection between zones)
@@ -142,4 +153,14 @@ export interface ZoneSplitResult {
 
   /** Transitions between zones */
   readonly transitions: readonly ZoneTransition[];
+}
+
+/**
+ * Extended artifact for hybrid generation carrying zone info
+ */
+export interface HybridStateArtifact extends DungeonStateArtifact {
+  readonly zones?: readonly ZoneDefinition[];
+  readonly transitions?: readonly ZoneTransition[];
+  readonly zoneGrids?: Map<string, Grid>;
+  readonly zoneRooms?: Map<string, Room[]>;
 }

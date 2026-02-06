@@ -14,20 +14,10 @@ export {
   CellularPasses,
   createCellularGenerator,
 } from "./cellular";
-
-// Hybrid Generator - BSP + Cellular combination
-export {
-  createHybridGenerator,
-  findZoneAtPoint,
-  getAlgorithmForZoneType,
-  HybridGenerator,
-  hybridGenerator,
-  isPointInZone,
-  splitIntoZones,
-} from "./hybrid";
 export type {
   GenerationAlgorithm,
   HybridConfig,
+  HybridConfigPatch,
   ZoneBounds,
   ZoneDefinition,
   ZoneSplitConfig,
@@ -35,4 +25,14 @@ export type {
   ZoneTransition,
   ZoneType,
 } from "./hybrid";
-export { DEFAULT_HYBRID_CONFIG, DEFAULT_ZONE_SPLIT_CONFIG } from "./hybrid";
+// Hybrid Generator - BSP + Cellular combination
+export {
+  createHybridGenerator,
+  DEFAULT_HYBRID_CONFIG,
+  DEFAULT_ZONE_SPLIT_CONFIG,
+  findZoneAtPoint,
+  getAlgorithmForZoneType,
+  HybridGenerator,
+  isPointInZone,
+  splitIntoZones,
+} from "./hybrid";
