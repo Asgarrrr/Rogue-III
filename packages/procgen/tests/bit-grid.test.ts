@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { BitGrid } from "../src/core/grid";
+import { BitGrid, createBitGridPool } from "../src/core/grid";
 
 describe("BitGrid", () => {
   describe("construction", () => {
@@ -199,6 +199,54 @@ describe("BitGrid", () => {
       const grid = new BitGrid(10, 10);
       expect(grid.isInBounds(-1, 0)).toBe(false);
       expect(grid.isInBounds(10, 0)).toBe(false);
+    });
+  });
+
+  describe("BitGridPool", () => {
+    it("reuses compatible grids and tracks hits/misses", () => {
+      const pool = createBitGridPool(1, 4);
+
+      const first = pool.acquire(8, 8);
+      expect(pool.stats.misses).toBe(1);
+      expect(pool.stats.hits).toBe(0);
+
+      pool.release(first);
+      const second = pool.acquire(8, 8);
+
+      expect(second).toBe(first);
+      expect(pool.stats.hits).toBe(1);
+      expect(pool.size).toBe(0);
+    });
+
+    it("auto-grows until hard max and then discards overflow", () => {
+      const pool = createBitGridPool(1, 4);
+
+      pool.release(new BitGrid(1, 1));
+      pool.release(new BitGrid(2, 2)); // grow 1 -> 2
+      pool.release(new BitGrid(3, 3)); // grow 2 -> 4
+      pool.release(new BitGrid(4, 4));
+      pool.release(new BitGrid(5, 5)); // discard at hard max
+
+      expect(pool.capacity).toBe(4);
+      expect(pool.size).toBe(4);
+      expect(pool.stats.growths).toBe(2);
+      expect(pool.stats.discards).toBe(1);
+    });
+
+    it("resets metrics without clearing pooled grids", () => {
+      const pool = createBitGridPool(2, 4);
+      pool.release(new BitGrid(3, 3));
+      expect(pool.size).toBe(1);
+      expect(pool.stats.releases).toBe(1);
+
+      pool.resetStats();
+
+      expect(pool.size).toBe(1);
+      expect(pool.stats.hits).toBe(0);
+      expect(pool.stats.misses).toBe(0);
+      expect(pool.stats.releases).toBe(0);
+      expect(pool.stats.growths).toBe(0);
+      expect(pool.stats.discards).toBe(0);
     });
   });
 });

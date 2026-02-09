@@ -5,6 +5,7 @@
  */
 
 import type { Point } from "../../core/geometry/types";
+import { MinHeap } from "../../core/data-structures";
 import { CellType, type Grid } from "../../core/grid";
 
 /**
@@ -337,7 +338,6 @@ export function carveAStarCorridor(
   cameFrom.fill(-1);
 
   const closed = new Uint8Array(totalCells);
-  const openHeap: number[] = [];
 
   const manhattan = (aX: number, aY: number, bX: number, bY: number) =>
     Math.abs(aX - bX) + Math.abs(aY - bY);
@@ -357,62 +357,11 @@ export function carveAStarCorridor(
 
     return a - b;
   };
-  const heapPush = (node: number): void => {
-    openHeap.push(node);
-    let index = openHeap.length - 1;
-    while (index > 0) {
-      const parent = Math.floor((index - 1) / 2);
-      const parentNode = openHeap[parent];
-      if (parentNode === undefined) break;
-      if (compareNodes(parentNode, node) <= 0) break;
-      openHeap[index] = parentNode;
-      index = parent;
-    }
-    openHeap[index] = node;
-  };
-  const heapPop = (): number | undefined => {
-    if (openHeap.length === 0) return undefined;
-    const best = openHeap[0];
-    const last = openHeap.pop();
-    if (best === undefined) return undefined;
-    if (last === undefined || openHeap.length === 0) {
-      return best;
-    }
-
-    let index = 0;
-    while (true) {
-      const left = index * 2 + 1;
-      const right = left + 1;
-      if (left >= openHeap.length) break;
-
-      let bestChild = left;
-      const leftNode = openHeap[left];
-      if (right < openHeap.length) {
-        const rightNode = openHeap[right];
-        if (
-          leftNode !== undefined &&
-          rightNode !== undefined &&
-          compareNodes(rightNode, leftNode) < 0
-        ) {
-          bestChild = right;
-        }
-      }
-
-      const childNode = openHeap[bestChild];
-      if (childNode === undefined) break;
-      if (compareNodes(last, childNode) <= 0) break;
-
-      openHeap[index] = childNode;
-      index = bestChild;
-    }
-
-    openHeap[index] = last;
-    return best;
-  };
+  const openHeap = new MinHeap<number>(compareNodes);
 
   gScore[fromIndex] = 0;
   fScore[fromIndex] = manhattan(from.x, from.y, to.x, to.y);
-  heapPush(fromIndex);
+  openHeap.push(fromIndex);
 
   const processNeighbor = (current: number, nx: number, ny: number): void => {
     if (!grid.isInBounds(nx, ny)) return;
@@ -432,11 +381,11 @@ export function carveAStarCorridor(
     gScore[neighborIndex] = tentativeG;
     fScore[neighborIndex] = tentativeG + manhattan(nx, ny, to.x, to.y);
 
-    heapPush(neighborIndex);
+    openHeap.push(neighborIndex);
   };
 
-  while (openHeap.length > 0) {
-    const current = heapPop();
+  while (openHeap.size > 0) {
+    const current = openHeap.pop();
     if (current === undefined) break;
     if (closed[current] === 1) continue;
 

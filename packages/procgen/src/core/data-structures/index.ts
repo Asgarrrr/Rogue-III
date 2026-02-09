@@ -8,3 +8,4 @@ export {
   coordKey,
   FastQueue,
 } from "./fast-queue";
+export { MinHeap, type MinHeapCompare } from "./min-heap";

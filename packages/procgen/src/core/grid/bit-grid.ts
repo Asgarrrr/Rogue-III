@@ -12,6 +12,25 @@ const DEV_MODE = process.env.NODE_ENV !== "production";
 // BitGrid Pool - Reuses BitGrid instances to reduce allocation pressure
 // ============================================================================
 
+export interface BitGridPoolStats {
+  readonly hits: number;
+  readonly misses: number;
+  readonly releases: number;
+  readonly growths: number;
+  readonly discards: number;
+  readonly peakSize: number;
+}
+
+export interface BitGridPoolLike {
+  acquire(width: number, height: number): BitGrid;
+  release(grid: BitGrid): void;
+  clear(): void;
+  resetStats(): void;
+  readonly size: number;
+  readonly capacity: number;
+  readonly stats: BitGridPoolStats;
+}
+
 /**
  * Pool of BitGrid instances for reuse.
  * Reduces GC pressure by reusing BitGrids instead of allocating new ones.
@@ -19,12 +38,22 @@ const DEV_MODE = process.env.NODE_ENV !== "production";
  * Thread-safety: This pool is designed for single-threaded use (JS main thread).
  * Determinism: Pool usage order does not affect RNG or generation output.
  */
-class BitGridPoolImpl {
+class BitGridPoolImpl implements BitGridPoolLike {
   private readonly pool: BitGrid[] = [];
-  private readonly maxSize: number;
+  private maxSize: number;
+  private readonly hardMaxSize: number;
+  private readonly growthFactor: number;
+  private hits = 0;
+  private misses = 0;
+  private releases = 0;
+  private growths = 0;
+  private discards = 0;
+  private peakSize = 0;
 
-  constructor(maxSize = 8) {
-    this.maxSize = maxSize;
+  constructor(initialMaxSize = 8, hardMaxSize = 64, growthFactor = 2) {
+    this.maxSize = Math.max(1, Math.floor(initialMaxSize));
+    this.hardMaxSize = Math.max(this.maxSize, Math.floor(hardMaxSize));
+    this.growthFactor = Math.max(2, Math.floor(growthFactor));
   }
 
   /**
@@ -32,17 +61,19 @@ class BitGridPoolImpl {
    * Returns a pooled instance if available (cleared), or creates a new one.
    */
   acquire(width: number, height: number): BitGrid {
-    // Look for a compatible grid in the pool
-    for (let i = 0; i < this.pool.length; i++) {
+    // Scan from end first to favor cache-hot, recently released grids.
+    for (let i = this.pool.length - 1; i >= 0; i--) {
       const grid = this.pool[i]!;
       if (grid.width === width && grid.height === height) {
         // Remove from pool and clear
         this.pool.splice(i, 1);
         grid.clear();
+        this.hits++;
         return grid;
       }
     }
     // No compatible grid found, create new
+    this.misses++;
     return new BitGrid(width, height);
   }
 
@@ -51,10 +82,23 @@ class BitGridPoolImpl {
    * If the pool is full, the grid is discarded (GC'd).
    */
   release(grid: BitGrid): void {
-    if (this.pool.length < this.maxSize) {
-      this.pool.push(grid);
+    this.releases++;
+
+    if (this.pool.length >= this.maxSize) {
+      if (this.maxSize < this.hardMaxSize) {
+        const grownCapacity = Math.max(this.maxSize + 1, this.maxSize * this.growthFactor);
+        this.maxSize = Math.min(this.hardMaxSize, grownCapacity);
+        this.growths++;
+      } else {
+        this.discards++;
+        return;
+      }
     }
-    // Otherwise let it be garbage collected
+
+    this.pool.push(grid);
+    if (this.pool.length > this.peakSize) {
+      this.peakSize = this.pool.length;
+    }
   }
 
   /**
@@ -70,13 +114,48 @@ class BitGridPoolImpl {
   get size(): number {
     return this.pool.length;
   }
+
+  /**
+   * Current pool capacity before future releases are discarded.
+   */
+  get capacity(): number {
+    return this.maxSize;
+  }
+
+  get stats(): BitGridPoolStats {
+    return {
+      hits: this.hits,
+      misses: this.misses,
+      releases: this.releases,
+      growths: this.growths,
+      discards: this.discards,
+      peakSize: this.peakSize,
+    };
+  }
+
+  resetStats(): void {
+    this.hits = 0;
+    this.misses = 0;
+    this.releases = 0;
+    this.growths = 0;
+    this.discards = 0;
+    this.peakSize = this.pool.length;
+  }
 }
 
 /**
  * Global BitGrid pool instance.
  * Use `BitGridPool.acquire()` and `BitGridPool.release()` for pooled access.
  */
-export const BitGridPool = new BitGridPoolImpl();
+export function createBitGridPool(
+  initialMaxSize = 8,
+  hardMaxSize = 64,
+  growthFactor = 2,
+): BitGridPoolLike {
+  return new BitGridPoolImpl(initialMaxSize, hardMaxSize, growthFactor);
+}
+
+export const BitGridPool: BitGridPoolLike = createBitGridPool();
 
 /**
  * Memory-efficient boolean grid using bit packing.
