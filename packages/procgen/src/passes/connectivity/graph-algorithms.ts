@@ -5,6 +5,7 @@
  */
 
 import { UnionFind } from "../../core/algorithms";
+import { buildRoomAdjacency, calculateBFSDistances } from "../../core/graph";
 import type { Connection, Room } from "../../pipeline/types";
 
 /**
@@ -140,35 +141,28 @@ export function bfsDistances(
   edges: readonly [number, number][],
   startNode: number,
 ): Map<number, number> {
-  const adjacency = new Map<number, Set<number>>();
+  const adjacency = new Map<number, number[]>();
 
   for (let i = 0; i < nodeCount; i++) {
-    adjacency.set(i, new Set());
+    adjacency.set(i, []);
   }
 
   for (const [from, to] of edges) {
-    adjacency.get(from)?.add(to);
-    adjacency.get(to)?.add(from);
-  }
+    const fromNeighbors = adjacency.get(from);
+    const toNeighbors = adjacency.get(to);
 
-  const distances = new Map<number, number>();
-  const queue: number[] = [startNode];
-  let queueHead = 0;
-  distances.set(startNode, 0);
-
-  while (queueHead < queue.length) {
-    const current = queue[queueHead++];
-    if (current === undefined) break;
-    const currentDist = distances.get(current) ?? 0;
-
-    for (const neighbor of adjacency.get(current) ?? []) {
-      if (!distances.has(neighbor)) {
-        distances.set(neighbor, currentDist + 1);
-        queue.push(neighbor);
-      }
+    if (fromNeighbors && !fromNeighbors.includes(to)) {
+      fromNeighbors.push(to);
+    }
+    if (toNeighbors && !toNeighbors.includes(from)) {
+      toNeighbors.push(from);
     }
   }
 
+  const { distances } = calculateBFSDistances(
+    startNode,
+    (nodeId) => adjacency.get(nodeId) ?? [],
+  );
   return distances;
 }
 
@@ -183,18 +177,7 @@ export function buildAdjacencyFromConnections(
   rooms: readonly Room[],
   connections: readonly Connection[],
 ): Map<number, number[]> {
-  const adjacency = new Map<number, number[]>();
-
-  for (const room of rooms) {
-    adjacency.set(room.id, []);
-  }
-
-  for (const conn of connections) {
-    adjacency.get(conn.fromRoomId)?.push(conn.toRoomId);
-    adjacency.get(conn.toRoomId)?.push(conn.fromRoomId);
-  }
-
-  return adjacency;
+  return buildRoomAdjacency(rooms, connections);
 }
 
 /**
@@ -208,33 +191,15 @@ export function calculateRoomDistances(
   startRoomId: number,
 ): Map<number, number> {
   const adjacency = buildAdjacencyFromConnections(rooms, connections);
-  const distances = new Map<number, number>();
-
-  const queue: Array<{ id: number; dist: number }> = [
-    { id: startRoomId, dist: 0 },
-  ];
-  let queueHead = 0;
-  distances.set(startRoomId, 0);
-
-  while (queueHead < queue.length) {
-    const current = queue[queueHead++];
-    if (!current) break;
-
-    const neighbors = adjacency.get(current.id) ?? [];
-    for (const neighborId of neighbors) {
-      if (!distances.has(neighborId)) {
-        const newDist = current.dist + 1;
-        distances.set(neighborId, newDist);
-        queue.push({ id: neighborId, dist: newDist });
-      }
-    }
-  }
+  const { distances, maxDistance } = calculateBFSDistances(
+    startRoomId,
+    (roomId) => adjacency.get(roomId) ?? [],
+  );
 
   // Set unreachable rooms to max distance + 1
-  const maxDist = Math.max(...Array.from(distances.values()), 0);
   for (const room of rooms) {
     if (!distances.has(room.id)) {
-      distances.set(room.id, maxDist + 1);
+      distances.set(room.id, maxDistance + 1);
     }
   }
 

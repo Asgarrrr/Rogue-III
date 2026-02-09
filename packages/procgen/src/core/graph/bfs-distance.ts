@@ -38,6 +38,7 @@ export function calculateBFSDistances<TNodeId>(
   const distances = new Map<TNodeId, number>();
   const queue: TNodeId[] = [sourceId];
   let queueHead = 0;
+  let maxDistance = 0;
 
   distances.set(sourceId, 0);
 
@@ -47,14 +48,15 @@ export function calculateBFSDistances<TNodeId>(
 
     for (const neighbor of getNeighbors(current)) {
       if (!distances.has(neighbor)) {
-        distances.set(neighbor, currentDist + 1);
+        const nextDistance = currentDist + 1;
+        distances.set(neighbor, nextDistance);
+        if (nextDistance > maxDistance) {
+          maxDistance = nextDistance;
+        }
         queue.push(neighbor);
       }
     }
   }
-
-  const maxDistance =
-    distances.size > 0 ? Math.max(0, ...distances.values()) : 0;
 
   return { distances, maxDistance };
 }
