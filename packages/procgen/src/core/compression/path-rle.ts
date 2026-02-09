@@ -282,7 +282,15 @@ export function deserializePathRLE(str: string): PathRLE {
     for (const moveStr of movesStr.split(";")) {
       if (!moveStr) continue;
 
-      const dir = moveStr.slice(0, moveStr.length === 2 ? 1 : 2) as Direction;
+      // Check if first 2 chars form a valid 2-char direction (NE, NW, SE, SW)
+      const twoChar = moveStr.slice(0, 2);
+      const isTwoCharDir =
+        twoChar === "NE" ||
+        twoChar === "NW" ||
+        twoChar === "SE" ||
+        twoChar === "SW";
+
+      const dir = (isTwoCharDir ? twoChar : moveStr.slice(0, 1)) as Direction;
       const count = parseInt(moveStr.slice(dir.length), 10);
       moves.push({ dir, count });
     }

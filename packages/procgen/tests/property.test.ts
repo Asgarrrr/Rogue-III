@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "bun:test";
 import type { DungeonArtifact, GenerationConfig } from "../src";
-import { computeStats, createSeed, generate, validateDungeon } from "../src";
+import { computeStats, createSeed, generate, SeededRandom, validateDungeon } from "../src";
 import { CellType, Grid } from "../src/core/grid";
 import { floodFill } from "../src/core/grid/flood-fill";
 
@@ -23,8 +23,14 @@ const PROPERTY_TEST_COUNT = 50;
 /**
  * Generate a random seed for testing
  */
+const TEST_RNG = new SeededRandom(0x5eedc0de);
+
 function randomSeed(): number {
-  return Math.floor(Math.random() * 0xffffffff);
+  return Math.floor(TEST_RNG.next() * 0x100000000) >>> 0;
+}
+
+function randomDimension(min: number, max: number): number {
+  return TEST_RNG.range(min, max);
 }
 
 // =============================================================================
@@ -63,8 +69,8 @@ describe("BSP generator property tests", () => {
     for (let i = 0; i < PROPERTY_TEST_COUNT; i++) {
       const seed = randomSeed();
       const config: GenerationConfig = {
-        width: 80 + Math.floor(Math.random() * 40), // 80-120
-        height: 60 + Math.floor(Math.random() * 30), // 60-90
+        width: randomDimension(80, 119),
+        height: randomDimension(60, 89),
         seed: createSeed(seed),
         algorithm: "bsp",
       };
@@ -251,13 +257,13 @@ describe("BSP generator property tests", () => {
       if (result.success) {
         const validation = validateDungeon(result.artifact);
 
-        if (!validation.valid) {
+        if (!validation.success) {
           console.error(`Validation failed with seed ${seed}:`);
           for (const v of validation.violations) {
             console.error(`  - ${v.type}: ${v.message}`);
           }
         }
-        expect(validation.valid).toBe(true);
+        expect(validation.success).toBe(true);
       }
     }
   });
@@ -272,8 +278,8 @@ describe("Cellular automata property tests", () => {
     for (let i = 0; i < PROPERTY_TEST_COUNT; i++) {
       const seed = randomSeed();
       const config: GenerationConfig = {
-        width: 80 + Math.floor(Math.random() * 40),
-        height: 60 + Math.floor(Math.random() * 30),
+        width: randomDimension(80, 119),
+        height: randomDimension(60, 89),
         seed: createSeed(seed),
         algorithm: "cellular",
       };
@@ -578,7 +584,7 @@ describe("Regression seed tests", () => {
 
       if (result.success) {
         const validation = validateDungeon(result.artifact);
-        expect(validation.valid).toBe(true);
+        expect(validation.success).toBe(true);
       }
     }
   });
@@ -602,7 +608,7 @@ describe("Edge case tests", () => {
 
     if (result.success) {
       const validation = validateDungeon(result.artifact);
-      expect(validation.valid).toBe(true);
+      expect(validation.success).toBe(true);
     }
   });
 
@@ -619,7 +625,7 @@ describe("Edge case tests", () => {
 
     if (result.success) {
       const validation = validateDungeon(result.artifact);
-      expect(validation.valid).toBe(true);
+      expect(validation.success).toBe(true);
     }
   });
 
@@ -636,7 +642,7 @@ describe("Edge case tests", () => {
 
     if (result.success) {
       const validation = validateDungeon(result.artifact);
-      expect(validation.valid).toBe(true);
+      expect(validation.success).toBe(true);
     }
   });
 
@@ -653,7 +659,7 @@ describe("Edge case tests", () => {
 
     if (result.success) {
       const validation = validateDungeon(result.artifact);
-      expect(validation.valid).toBe(true);
+      expect(validation.success).toBe(true);
     }
   });
 });

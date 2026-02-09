@@ -303,7 +303,7 @@ describe("collectMetrics", () => {
 
     const connections: Connection[] = [
       // Only connect 0 and 1, leaving 2 disconnected
-      { fromRoomId: 0, toRoomId: 1, path: [] },
+      { fromRoomId: 0, toRoomId: 1, path: [], pathLength: 0 },
     ];
 
     const artifact = createMockArtifact({ rooms, connections });

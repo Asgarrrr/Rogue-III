@@ -90,14 +90,32 @@ export interface GenerationMetrics {
 }
 
 /**
- * Collect comprehensive metrics from a dungeon artifact
+ * Options for metrics collection
  */
-export function collectMetrics(artifact: DungeonArtifact): GenerationMetrics {
+export interface MetricsOptions {
+  /**
+   * Skip O(R²) metrics like diameter and averagePathLength.
+   * Useful in production when these expensive metrics aren't needed.
+   * Default: false
+   */
+  skipHeavyMetrics?: boolean;
+}
+
+/**
+ * Collect comprehensive metrics from a dungeon artifact
+ *
+ * @param artifact - The dungeon artifact to analyze
+ * @param options - Collection options (e.g., skipHeavyMetrics)
+ */
+export function collectMetrics(
+  artifact: DungeonArtifact,
+  options: MetricsOptions = {},
+): GenerationMetrics {
   return {
     width: artifact.width,
     height: artifact.height,
     spatial: collectSpatialMetrics(artifact),
-    connectivity: collectConnectivityMetrics(artifact),
+    connectivity: collectConnectivityMetrics(artifact, options),
     content: collectContentMetrics(artifact),
     meta: {
       checksum: artifact.checksum,
@@ -115,7 +133,9 @@ function collectSpatialMetrics(artifact: DungeonArtifact): SpatialMetrics {
   const roomSizeStats = calculateStats(roomAreas);
 
   // Corridor lengths
-  const corridorLengths = artifact.connections.map((c) => c.path.length);
+  const corridorLengths = artifact.connections.map(
+    (c) => c.pathLength ?? c.path?.length ?? 0,
+  );
   const corridorStats = calculateStats(corridorLengths);
 
   // Floor/wall counts
@@ -154,11 +174,16 @@ function collectSpatialMetrics(artifact: DungeonArtifact): SpatialMetrics {
 
 /**
  * Collect connectivity metrics
+ *
+ * @param artifact - The dungeon artifact
+ * @param options - Collection options
  */
 function collectConnectivityMetrics(
   artifact: DungeonArtifact,
+  options: MetricsOptions = {},
 ): ConnectivityMetrics {
   const { rooms, connections } = artifact;
+  const { skipHeavyMetrics = false } = options;
 
   if (rooms.length === 0) {
     return {
@@ -191,47 +216,53 @@ function collectConnectivityMetrics(
   const maxEdges = (rooms.length * (rooms.length - 1)) / 2;
   const graphDensity = maxEdges > 0 ? connections.length / maxEdges : 0;
 
-  // Calculate shortest paths (BFS from each room)
-  const distances: number[] = [];
+  // Heavy metrics: O(R²) BFS from each room for diameter/avgPathLength
+  let avgPathLength = 0;
   let maxDistance = 0;
 
-  for (const startRoom of rooms) {
-    const visited = new Map<number, number>();
-    const queue: Array<{ id: number; dist: number }> = [
-      { id: startRoom.id, dist: 0 },
-    ];
-    visited.set(startRoom.id, 0);
+  if (!skipHeavyMetrics) {
+    const distances: number[] = [];
 
-    while (queue.length > 0) {
-      const current = queue.shift();
-      if (!current) break;
+    for (const startRoom of rooms) {
+      const visited = new Map<number, number>();
+      const queue: Array<{ id: number; dist: number }> = [
+        { id: startRoom.id, dist: 0 },
+      ];
+      visited.set(startRoom.id, 0);
+      let queueHead = 0;
 
-      for (const neighbor of adjacency.get(current.id) ?? []) {
-        if (!visited.has(neighbor)) {
-          const newDist = current.dist + 1;
-          visited.set(neighbor, newDist);
-          distances.push(newDist);
-          maxDistance = Math.max(maxDistance, newDist);
-          queue.push({ id: neighbor, dist: newDist });
+      while (queueHead < queue.length) {
+        const current = queue[queueHead++];
+        if (!current) break;
+
+        for (const neighbor of adjacency.get(current.id) ?? []) {
+          if (!visited.has(neighbor)) {
+            const newDist = current.dist + 1;
+            visited.set(neighbor, newDist);
+            distances.push(newDist);
+            maxDistance = Math.max(maxDistance, newDist);
+            queue.push({ id: neighbor, dist: newDist });
+          }
         }
       }
     }
+
+    avgPathLength =
+      distances.length > 0
+        ? distances.reduce((a, b) => a + b, 0) / distances.length
+        : 0;
   }
 
-  const avgPathLength =
-    distances.length > 0
-      ? distances.reduce((a, b) => a + b, 0) / distances.length
-      : 0;
-
-  // Check connectivity
+  // Check connectivity (O(R) - always needed)
   const firstRoomId = rooms[0]?.id;
   const reachable = new Set<number>();
   if (firstRoomId !== undefined) {
     const queue = [firstRoomId];
     reachable.add(firstRoomId);
+    let queueHead = 0;
 
-    while (queue.length > 0) {
-      const current = queue.shift();
+    while (queueHead < queue.length) {
+      const current = queue[queueHead++];
       if (current === undefined) break;
       for (const neighbor of adjacency.get(current) ?? []) {
         if (!reachable.has(neighbor)) {

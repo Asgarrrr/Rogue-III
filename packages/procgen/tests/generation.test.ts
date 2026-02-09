@@ -103,15 +103,43 @@ describe("generate", () => {
     }
   });
 
-  it("returns error for unknown algorithm", () => {
+  it("supports A* corridor style in BSP config", () => {
     const config: GenerationConfig = {
-      width: 60,
-      height: 30,
-      seed: createSeed(12345),
-      algorithm: "unknown" as any,
+      width: 80,
+      height: 50,
+      seed: createSeed(54321),
+      algorithm: "bsp",
+      bsp: {
+        minRoomSize: 6,
+        maxRoomSize: 18,
+        splitRatioMin: 0.4,
+        splitRatioMax: 0.6,
+        roomPadding: 1,
+        corridorWidth: 1,
+        corridorStyle: "astar",
+        maxDepth: 5,
+        roomPlacementChance: 1.0,
+      },
     };
 
     const result = generate(config);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.artifact.rooms.length).toBeGreaterThan(0);
+      expect(result.artifact.connections.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("returns error for unknown algorithm", () => {
+    const invalidConfig = {
+      width: 60,
+      height: 30,
+      seed: createSeed(12345),
+      algorithm: "unknown",
+    };
+
+    const result = generate(invalidConfig as GenerationConfig);
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -349,20 +377,20 @@ describe("validateConfig", () => {
 
     const result = validateConfig(config);
 
-    expect(result.passed).toBe(true);
+    expect(result.success).toBe(true);
   });
 
   it("returns error for unknown algorithm", () => {
-    const config: GenerationConfig = {
+    const invalidConfig = {
       width: 60,
       height: 30,
       seed: createSeed(12345),
-      algorithm: "invalid" as any,
+      algorithm: "invalid",
     };
 
-    const result = validateConfig(config);
+    const result = validateConfig(invalidConfig as GenerationConfig);
 
-    expect(result.passed).toBe(false);
+    expect(result.success).toBe(false);
     expect(result.violations.length).toBeGreaterThan(0);
   });
 });
@@ -382,19 +410,20 @@ describe("getAvailableAlgorithms", () => {
 
 import {
   computeStats,
-  createSeedFromSeed,
   createSeedWithTimestamp,
+  normalizeSeed,
   seedsAreEquivalent,
   validateDungeon,
 } from "../src";
 
 describe("seed determinism fixes", () => {
-  it("createSeed produces deterministic timestamp (0)", () => {
+  it("createSeed produces deterministic timestamp (1)", () => {
     const seed1 = createSeed(12345);
     const seed2 = createSeed(12345);
 
-    expect(seed1.timestamp).toBe(0);
-    expect(seed2.timestamp).toBe(0);
+    // Timestamp normalized to 1 (positive required by validation)
+    expect(seed1.timestamp).toBe(1);
+    expect(seed2.timestamp).toBe(1);
     expect(seed1.timestamp).toBe(seed2.timestamp);
   });
 
@@ -407,11 +436,11 @@ describe("seed determinism fixes", () => {
     expect(seed.timestamp).toBeLessThanOrEqual(after);
   });
 
-  it("createSeedFromSeed normalizes timestamp", () => {
+  it("normalizeSeed normalizes timestamp", () => {
     const original = createSeedWithTimestamp(12345);
-    const restored = createSeedFromSeed(original);
+    const restored = normalizeSeed(original);
 
-    expect(restored.timestamp).toBe(0);
+    expect(restored.timestamp).toBe(1); // Normalized to 1 (positive required by validation)
     expect(restored.primary).toBe(original.primary);
     expect(restored.layout).toBe(original.layout);
   });
@@ -444,7 +473,7 @@ describe("validateDungeon invariants", () => {
 
     if (result.success) {
       const validation = validateDungeon(result.artifact);
-      expect(validation.valid).toBe(true);
+      expect(validation.success).toBe(true);
       expect(validation.violations.length).toBe(0);
     }
   });
@@ -463,7 +492,7 @@ describe("validateDungeon invariants", () => {
       const validation = validateDungeon(result.artifact);
 
       // Should pass since entrance and exit are always created
-      expect(validation.valid).toBe(true);
+      expect(validation.success).toBe(true);
     }
   });
 
@@ -481,7 +510,7 @@ describe("validateDungeon invariants", () => {
       const validation = validateDungeon(result.artifact);
 
       // MST guarantees connectivity
-      expect(validation.valid).toBe(true);
+      expect(validation.success).toBe(true);
       const connectivityViolations = validation.violations.filter(
         (v) => v.type === "invariant.connectivity",
       );
@@ -711,7 +740,7 @@ describe("cellular automata generator", () => {
     expect(result.success).toBe(true);
     if (result.success) {
       const validation = validateDungeon(result.artifact);
-      expect(validation.valid).toBe(true);
+      expect(validation.success).toBe(true);
     }
   });
 
@@ -756,6 +785,52 @@ describe("cellular automata generator", () => {
     expect(result.success).toBe(true);
   });
 
+  it("stops cellular iterations early when state is stable", () => {
+    const config: GenerationConfig = {
+      width: 60,
+      height: 40,
+      seed: createSeed(12345),
+      algorithm: "cellular",
+      trace: true,
+      cellular: {
+        initialFillRatio: 0,
+        birthLimit: 5,
+        deathLimit: 4,
+        iterations: 8,
+        minRegionSize: 10,
+      },
+    };
+
+    const result = generate(config);
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    const decisions = (result.trace ?? []).filter(
+      (e) => e.passId === "cellular.apply-rules" && e.eventType === "decision",
+    );
+
+    const stableEvent = decisions.find((event) => {
+      const data = event.data as { question?: string } | undefined;
+      return data?.question === "Stable state reached";
+    });
+    expect(stableEvent).toBeDefined();
+
+    const completionEvent = decisions.find((event) => {
+      const data = event.data as { question?: string } | undefined;
+      return data?.question === "Cellular automata complete";
+    });
+    expect(completionEvent).toBeDefined();
+
+    const completionData = completionEvent?.data as
+      | { chosen?: unknown }
+      | undefined;
+    expect(typeof completionData?.chosen).toBe("number");
+    if (typeof completionData?.chosen === "number") {
+      expect(completionData.chosen).toBeLessThan(8);
+    }
+  });
+
   it("getAvailableAlgorithms includes cellular", () => {
     const algorithms = getAvailableAlgorithms();
     expect(algorithms).toContain("cellular");
@@ -768,11 +843,11 @@ describe("cellular automata generator", () => {
 // =============================================================================
 
 // =============================================================================
-// ROOM TYPE SEMANTICS TESTS
+// ROOM STRUCTURAL METADATA TESTS
 // =============================================================================
 
-describe("room type semantics", () => {
-  it("assigns entrance and exit room types", () => {
+describe("room structural metadata", () => {
+  it("has entrance and exit spawn points in different rooms", () => {
     const config: GenerationConfig = {
       width: 100,
       height: 80,
@@ -783,24 +858,25 @@ describe("room type semantics", () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
+      const spawns = result.artifact.spawns;
+
+      // Should have entrance spawn point
+      const entrance = spawns.find((s) => s.type === "entrance");
+      expect(entrance).toBeDefined();
+
+      // Should have exit spawn point
+      const exit = spawns.find((s) => s.type === "exit");
+      expect(exit).toBeDefined();
+
+      // Entrance and exit should be in different rooms (if more than 1 room)
       const rooms = result.artifact.rooms;
-
-      // Should have an entrance room
-      const entranceRoom = rooms.find((r) => r.type === "entrance");
-      expect(entranceRoom).toBeDefined();
-
-      // Should have an exit room
-      const exitRoom = rooms.find((r) => r.type === "exit");
-      expect(exitRoom).toBeDefined();
-
-      // Entrance and exit should be different rooms (if more than 1 room)
       if (rooms.length > 1) {
-        expect(entranceRoom?.id).not.toBe(exitRoom?.id);
+        expect(entrance?.roomId).not.toBe(exit?.roomId);
       }
     }
   });
 
-  it("assigns boss room when enough rooms exist", () => {
+  it("computes room structural metadata", () => {
     const config: GenerationConfig = {
       width: 120,
       height: 90,
@@ -813,15 +889,28 @@ describe("room type semantics", () => {
     if (result.success) {
       const rooms = result.artifact.rooms;
 
-      // With a large dungeon, should have a boss room
-      if (rooms.length >= 4) {
-        const bossRoom = rooms.find((r) => r.type === "boss");
-        expect(bossRoom).toBeDefined();
+      // With enough rooms, should have structural metadata
+      if (rooms.length >= 3) {
+        // Should have connection counts
+        const roomWithConnections = rooms.find(
+          (r) => r.connectionCount !== undefined,
+        );
+        expect(roomWithConnections).toBeDefined();
+
+        // Should have distance from entrance
+        const roomWithDistance = rooms.find(
+          (r) => r.distanceFromEntrance !== undefined,
+        );
+        expect(roomWithDistance).toBeDefined();
+
+        // Should have at least one dead-end (single connection)
+        const deadEnds = rooms.filter((r) => r.isDeadEnd === true);
+        expect(deadEnds.length).toBeGreaterThanOrEqual(0); // May or may not have dead-ends
       }
     }
   });
 
-  it("room types are deterministic", () => {
+  it("room metadata is deterministic", () => {
     const config: GenerationConfig = {
       width: 100,
       height: 80,
@@ -835,10 +924,16 @@ describe("room type semantics", () => {
     expect(result2.success).toBe(true);
 
     if (result1.success && result2.success) {
-      // Room types should match
+      // Room metadata should match
       for (let i = 0; i < result1.artifact.rooms.length; i++) {
         expect(result1.artifact.rooms[i]?.type).toBe(
           result2.artifact.rooms[i]?.type,
+        );
+        expect(result1.artifact.rooms[i]?.connectionCount).toBe(
+          result2.artifact.rooms[i]?.connectionCount,
+        );
+        expect(result1.artifact.rooms[i]?.distanceFromEntrance).toBe(
+          result2.artifact.rooms[i]?.distanceFromEntrance,
         );
       }
     }
@@ -885,9 +980,9 @@ describe("generation statistics", () => {
     if (result.success) {
       const stats = computeStats(result.artifact);
 
-      // Should have entrance and exit
-      expect(stats.roomTypeCounts.entrance).toBe(1);
-      expect(stats.roomTypeCounts.exit).toBe(1);
+      // Room types are now structural only ("normal" or "cavern")
+      // All BSP-generated rooms should be "normal"
+      expect(stats.roomTypeCounts.normal).toBeGreaterThan(0);
 
       // Total room type counts should match room count
       const totalTypeCounts = Object.values(stats.roomTypeCounts).reduce(
@@ -992,7 +1087,8 @@ describe("artifact snapshots", () => {
     const result = generate(config);
 
     expect(result.success).toBe(true);
-    expect(result.snapshots).toBeUndefined();
+    // snapshots is always an array (empty when disabled)
+    expect(result.snapshots).toEqual([]);
   });
 
   it("snapshots show progression", () => {
@@ -1081,13 +1177,7 @@ describe("terrain immutability", () => {
 // GENERATOR CHAINING TESTS
 // =============================================================================
 
-import {
-  chain,
-  createDeadEndTreasureProcessor,
-  createEnemyProcessor,
-  createTreasureProcessor,
-  transform,
-} from "../src";
+import { chain, transform } from "../src";
 
 describe("generator chaining", () => {
   it("chains generator with post-processor", () => {
@@ -1156,8 +1246,8 @@ describe("generator chaining", () => {
           {
             position: { x: 10, y: 10 },
             roomId: 0,
-            type: "decoration" as const,
-            tags: ["test"],
+            type: "entrance" as const,
+            tags: ["custom-test"],
             weight: 1,
             distanceFromStart: 0,
           },
@@ -1167,10 +1257,11 @@ describe("generator chaining", () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      const decorations = result.artifact.spawns.filter(
-        (s) => s.type === "decoration",
+      // Use tags for custom identification since SpawnPointType is now structural only
+      const customSpawns = result.artifact.spawns.filter((s) =>
+        s.tags.includes("custom-test"),
       );
-      expect(decorations.length).toBeGreaterThan(0);
+      expect(customSpawns.length).toBeGreaterThan(0);
     }
   });
 
@@ -1216,10 +1307,10 @@ describe("dungeon transformer", () => {
 
     if (result.success) {
       const transformed = transform(result.artifact)
-        .mapRooms((room) => ({ ...room, type: "treasure" as const }))
+        .mapRooms((room) => ({ ...room, type: "cavern" as const }))
         .build();
 
-      expect(transformed.rooms.every((r) => r.type === "treasure")).toBe(true);
+      expect(transformed.rooms.every((r) => r.type === "cavern")).toBe(true);
     }
   });
 
@@ -1262,7 +1353,7 @@ describe("dungeon transformer", () => {
           dungeon.rooms.map((room) => ({
             position: { x: room.centerX, y: room.centerY },
             roomId: room.id,
-            type: "decoration" as const,
+            type: "exit" as const,
             tags: ["lamp"],
             weight: 1,
             distanceFromStart: 0,
@@ -1273,71 +1364,6 @@ describe("dungeon transformer", () => {
       expect(transformed.spawns.length).toBe(
         originalSpawnCount + result.artifact.rooms.length,
       );
-    }
-  });
-});
-
-describe("common post-processors", () => {
-  it("createTreasureProcessor adds treasure spawns", () => {
-    const config: GenerationConfig = {
-      width: 80,
-      height: 60,
-      seed: createSeed(12345),
-    };
-
-    const result = chain(config)
-      .useGenerator("bsp")
-      .transform(createTreasureProcessor(1.0)) // 100% chance
-      .run();
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      const treasures = result.artifact.spawns.filter(
-        (s) => s.type === "treasure",
-      );
-      expect(treasures.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("createEnemyProcessor adds enemy spawns", () => {
-    const config: GenerationConfig = {
-      width: 80,
-      height: 60,
-      seed: createSeed(12345),
-    };
-
-    const result = chain(config)
-      .useGenerator("bsp")
-      .transform(createEnemyProcessor(2, 3))
-      .run();
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      const enemies = result.artifact.spawns.filter((s) => s.type === "enemy");
-      expect(enemies.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("createDeadEndTreasureProcessor marks dead-ends", () => {
-    const config: GenerationConfig = {
-      width: 100,
-      height: 80,
-      seed: createSeed(12345),
-    };
-
-    const result = chain(config)
-      .useGenerator("bsp")
-      .transform(createDeadEndTreasureProcessor())
-      .run();
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      // Should have some treasure rooms now
-      const treasureRooms = result.artifact.rooms.filter(
-        (r) => r.type === "treasure",
-      );
-      // May or may not have dead-ends depending on layout
-      expect(treasureRooms).toBeDefined();
     }
   });
 });

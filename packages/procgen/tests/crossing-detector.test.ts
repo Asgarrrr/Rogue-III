@@ -189,6 +189,32 @@ describe("detectCorridorCrossings", () => {
     // Should detect 2 crossings (0-1 with 2-3, and 0-1 with 4-5)
     expect(result.crossings.length).toBe(2);
   });
+
+  it("does not collide coordinates on wide maps", () => {
+    const connections: Connection[] = [
+      {
+        fromRoomId: 0,
+        toRoomId: 1,
+        path: [
+          { x: 10001, y: 0 },
+          { x: 10002, y: 0 },
+        ],
+      },
+      {
+        fromRoomId: 2,
+        toRoomId: 3,
+        path: [
+          { x: 1, y: 1 },
+          { x: 2, y: 1 },
+        ],
+      },
+    ];
+
+    const result = detectCorridorCrossings(connections);
+
+    expect(result.crossings.length).toBe(0);
+    expect(result.hasUnintendedShortcuts).toBe(false);
+  });
 });
 
 describe("validateProgressionIntegrity", () => {
@@ -206,7 +232,7 @@ describe("validateProgressionIntegrity", () => {
       intendedGraph,
     );
 
-    expect(result.valid).toBe(true);
+    expect(result.success).toBe(true);
     expect(result.shortestPathReduction).toBe(0);
   });
 
@@ -234,7 +260,7 @@ describe("validateProgressionIntegrity", () => {
     );
 
     expect(result.shortestPathReduction).toBeGreaterThan(1);
-    expect(result.valid).toBe(false);
+    expect(result.success).toBe(false);
   });
 
   it("allows minor shortcuts (1 step)", () => {
@@ -258,7 +284,7 @@ describe("validateProgressionIntegrity", () => {
       actualGraph,
     );
 
-    expect(result.valid).toBe(true);
+    expect(result.success).toBe(true);
     expect(result.shortestPathReduction).toBe(1);
   });
 
@@ -270,7 +296,7 @@ describe("validateProgressionIntegrity", () => {
 
     const result = validateProgressionIntegrity(0, 0, graph, graph);
 
-    expect(result.valid).toBe(true);
+    expect(result.success).toBe(true);
     expect(result.shortestPathReduction).toBe(0);
   });
 });

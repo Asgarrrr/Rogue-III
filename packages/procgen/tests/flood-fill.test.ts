@@ -10,7 +10,7 @@ import {
   findLargestRegion,
   findRegions,
   floodFill,
-  floodFillScanline,
+  floodFillScanlinePacked,
 } from "../src/core/grid/flood-fill";
 
 describe("floodFill", () => {
@@ -81,15 +81,21 @@ describe("floodFill", () => {
   });
 });
 
-describe("floodFillScanline", () => {
+describe("floodFillScanlinePacked", () => {
   it("fills connected region efficiently", () => {
     const grid = new Grid(100, 100, CellType.FLOOR);
     const visited = new BitGrid(100, 100);
 
-    const points = floodFillScanline(grid, 50, 50, CellType.FLOOR, visited);
+    const packed = floodFillScanlinePacked(
+      grid,
+      50,
+      50,
+      CellType.FLOOR,
+      visited,
+    );
 
     // Should fill entire grid
-    expect(points).toHaveLength(10000);
+    expect(packed).toHaveLength(10000);
   });
 
   it("handles narrow corridors", () => {
@@ -100,16 +106,16 @@ describe("floodFillScanline", () => {
     }
 
     const visited = new BitGrid(20, 10);
-    const points = floodFillScanline(grid, 0, 5, CellType.FLOOR, visited);
+    const packed = floodFillScanlinePacked(grid, 0, 5, CellType.FLOOR, visited);
 
-    expect(points).toHaveLength(20);
+    expect(packed).toHaveLength(20);
   });
 
   it("marks cells as visited", () => {
     const grid = new Grid(10, 10, CellType.FLOOR);
     const visited = new BitGrid(10, 10);
 
-    floodFillScanline(grid, 5, 5, CellType.FLOOR, visited);
+    floodFillScanlinePacked(grid, 5, 5, CellType.FLOOR, visited);
 
     // All cells should be visited
     expect(visited.count()).toBe(100);

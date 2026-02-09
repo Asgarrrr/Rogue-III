@@ -30,10 +30,6 @@ export interface AsciiCharset {
   readonly floor: string;
   readonly entrance: string;
   readonly exit: string;
-  readonly enemy: string;
-  readonly treasure: string;
-  readonly item: string;
-  readonly decoration: string;
   readonly roomCenter: string;
   readonly corridor: string;
   readonly unknown: string;
@@ -47,10 +43,6 @@ export const DEFAULT_CHARSET: AsciiCharset = {
   floor: "·",
   entrance: "▲",
   exit: "▼",
-  enemy: "E",
-  treasure: "$",
-  item: "?",
-  decoration: "○",
   roomCenter: "+",
   corridor: "░",
   unknown: " ",
@@ -64,10 +56,6 @@ export const SIMPLE_CHARSET: AsciiCharset = {
   floor: ".",
   entrance: "@",
   exit: ">",
-  enemy: "E",
-  treasure: "$",
-  item: "?",
-  decoration: "o",
   roomCenter: "+",
   corridor: ",",
   unknown: " ",
@@ -284,14 +272,6 @@ function getSpawnChar(
       return charset.entrance;
     case "exit":
       return charset.exit;
-    case "enemy":
-      return charset.enemy;
-    case "treasure":
-      return charset.treasure;
-    case "item":
-      return charset.item;
-    case "decoration":
-      return charset.decoration;
     default:
       return charset.unknown;
   }
@@ -306,14 +286,6 @@ function getSpawnColor(type: string): string {
       return ANSI.green;
     case "exit":
       return ANSI.red;
-    case "enemy":
-      return ANSI.red;
-    case "treasure":
-      return ANSI.yellow;
-    case "item":
-      return ANSI.magenta;
-    case "decoration":
-      return ANSI.dim + ANSI.white;
     default:
       return ANSI.white;
   }
@@ -515,10 +487,6 @@ export function renderLegend(charset: AsciiCharset = DEFAULT_CHARSET): string {
     `  ${charset.floor} Floor`,
     `  ${charset.entrance} Entrance`,
     `  ${charset.exit} Exit`,
-    `  ${charset.enemy} Enemy`,
-    `  ${charset.treasure} Treasure`,
-    `  ${charset.item} Item`,
-    `  ${charset.decoration} Decoration`,
     `  ${charset.roomCenter} Room Center`,
   ].join("\n");
 }

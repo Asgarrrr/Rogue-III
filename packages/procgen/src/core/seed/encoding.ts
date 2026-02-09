@@ -16,7 +16,11 @@
  * ```
  */
 
-import { type DungeonSeed, SeededRandom } from "@rogue/contracts";
+import {
+  type DungeonSeed,
+  randomUint32,
+} from "@rogue/contracts";
+import { buildSeedFromPrimary } from "./derivation";
 
 // =============================================================================
 // BASE62 ENCODING
@@ -148,18 +152,7 @@ export function decodeSeed(encoded: string): DungeonSeed {
  * This must match the logic in createSeed().
  */
 function reconstructSeed(primary: number): DungeonSeed {
-  // Use the same algorithm as createSeed to derive sub-seeds
-  const rng = new SeededRandom(primary >>> 0);
-
-  return {
-    primary: primary >>> 0,
-    layout: Math.floor(rng.next() * 0xffffffff),
-    rooms: Math.floor(rng.next() * 0xffffffff),
-    connections: Math.floor(rng.next() * 0xffffffff),
-    details: Math.floor(rng.next() * 0xffffffff),
-    version: "2.0.0",
-    timestamp: 0,
-  };
+  return buildSeedFromPrimary(primary);
 }
 
 /**
@@ -168,7 +161,7 @@ function reconstructSeed(primary: number): DungeonSeed {
  * @param encoded - The string to validate
  * @returns true if the string is a valid encoded seed
  */
-export function isValidEncodedSeed(encoded: string): boolean {
+export function isValidEncodedSeed(encoded: unknown): boolean {
   if (typeof encoded !== "string") return false;
   if (encoded.length < 2 || encoded.length > 8) return false;
 
@@ -195,8 +188,8 @@ export function isValidEncodedSeed(encoded: string): boolean {
  * @returns A random encoded seed string
  */
 export function randomEncodedSeed(): string {
-  const primary = Math.floor(Math.random() * 0xffffffff);
-  return encodeSeed({ primary } as DungeonSeed);
+  const primary = randomUint32();
+  return encodeSeed(reconstructSeed(primary));
 }
 
 // =============================================================================

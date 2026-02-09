@@ -161,6 +161,43 @@ export class DijkstraMap {
   }
 
   /**
+   * Get the path from a point to the nearest goal by following the distance gradient.
+   * @param from - Starting point
+   * @returns Array of points forming the path to the nearest goal, or empty if unreachable
+   */
+  getPathToGoal(from: Point): Point[] {
+    const path: Point[] = [{ x: from.x, y: from.y }];
+    let current = from;
+    const maxSteps = this.width * this.height; // Prevent infinite loops
+
+    for (let step = 0; step < maxSteps; step++) {
+      const dist = this.get(current.x, current.y);
+      if (dist === 0) break; // Reached goal
+      if (dist === Infinity) return []; // Unreachable
+
+      const next = this.getDownhillDirection(current.x, current.y);
+      if (!next) break;
+
+      current = { x: current.x + next.x, y: current.y + next.y };
+      path.push({ x: current.x, y: current.y });
+    }
+
+    return path;
+  }
+
+  /**
+   * Iterate over all cells in the distance map.
+   * @param callback - Function called for each cell with (x, y, distance)
+   */
+  forEach(callback: (x: number, y: number, distance: number) => void): void {
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        callback(x, y, this.get(x, y));
+      }
+    }
+  }
+
+  /**
    * Calculate statistics about this Dijkstra map.
    */
   getStats(): DijkstraMapStats {
@@ -228,90 +265,100 @@ const DIRECTIONS_4: ReadonlyArray<readonly [number, number]> = [
 // BINARY HEAP PRIORITY QUEUE
 // =============================================================================
 
-interface HeapNode {
-  x: number;
-  y: number;
-  dist: number;
-}
-
 /**
- * Min-heap priority queue for Dijkstra's algorithm.
- * O(log n) insert and extract-min operations.
+ * Typed array based min-heap for better cache performance.
+ * Stores x, y, dist in parallel typed arrays.
  */
-class MinHeap {
-  private heap: HeapNode[] = [];
+class TypedMinHeap {
+  private x: Uint16Array;
+  private y: Uint16Array;
+  private dist: Float32Array;
+  private size = 0;
+  private capacity: number;
+
+  constructor(capacity: number = 1024) {
+    this.capacity = capacity;
+    this.x = new Uint16Array(capacity);
+    this.y = new Uint16Array(capacity);
+    this.dist = new Float32Array(capacity);
+  }
 
   get length(): number {
-    return this.heap.length;
+    return this.size;
   }
 
-  push(node: HeapNode): void {
-    this.heap.push(node);
-    this.bubbleUp(this.heap.length - 1);
+  push(x: number, y: number, dist: number): void {
+    if (this.size >= this.capacity) {
+      this.grow();
+    }
+    const i = this.size++;
+    this.x[i] = x;
+    this.y[i] = y;
+    this.dist[i] = dist;
+    this.bubbleUp(i);
   }
 
-  pop(): HeapNode | undefined {
-    if (this.heap.length === 0) return undefined;
-    if (this.heap.length === 1) return this.heap.pop();
-
-    const min = this.heap[0];
-    const last = this.heap.pop();
-    if (last !== undefined && this.heap.length > 0) {
-      this.heap[0] = last;
+  pop(): { x: number; y: number; dist: number } | undefined {
+    if (this.size === 0) return undefined;
+    const result = { x: this.x[0]!, y: this.y[0]!, dist: this.dist[0]! };
+    this.size--;
+    if (this.size > 0) {
+      this.x[0] = this.x[this.size]!;
+      this.y[0] = this.y[this.size]!;
+      this.dist[0] = this.dist[this.size]!;
       this.bubbleDown(0);
     }
-    return min;
+    return result;
   }
 
-  private bubbleUp(index: number): void {
-    while (index > 0) {
-      const parentIdx = (index - 1) >> 1;
-      const current = this.heap[index];
-      const parent = this.heap[parentIdx];
-      if (!current || !parent || current.dist >= parent.dist) break;
+  clear(): void {
+    this.size = 0;
+  }
 
-      this.heap[index] = parent;
-      this.heap[parentIdx] = current;
-      index = parentIdx;
+  private grow(): void {
+    this.capacity *= 2;
+    const newX = new Uint16Array(this.capacity);
+    const newY = new Uint16Array(this.capacity);
+    const newDist = new Float32Array(this.capacity);
+    newX.set(this.x);
+    newY.set(this.y);
+    newDist.set(this.dist);
+    this.x = newX;
+    this.y = newY;
+    this.dist = newDist;
+  }
+
+  private bubbleUp(i: number): void {
+    while (i > 0) {
+      const parent = (i - 1) >> 1;
+      if (this.dist[i]! >= this.dist[parent]!) break;
+      this.swap(i, parent);
+      i = parent;
     }
   }
 
-  private bubbleDown(index: number): void {
-    const length = this.heap.length;
-
+  private bubbleDown(i: number): void {
     while (true) {
-      const leftIdx = (index << 1) + 1;
-      const rightIdx = leftIdx + 1;
-      let smallest = index;
+      const left = 2 * i + 1;
+      const right = 2 * i + 2;
+      let smallest = i;
 
-      const current = this.heap[smallest];
-      const left = this.heap[leftIdx];
-      const right = this.heap[rightIdx];
-
-      if (leftIdx < length && left && current && left.dist < current.dist) {
-        smallest = leftIdx;
+      if (left < this.size && this.dist[left]! < this.dist[smallest]!) {
+        smallest = left;
       }
-
-      const smallestNode = this.heap[smallest];
-      if (
-        rightIdx < length &&
-        right &&
-        smallestNode &&
-        right.dist < smallestNode.dist
-      ) {
-        smallest = rightIdx;
+      if (right < this.size && this.dist[right]! < this.dist[smallest]!) {
+        smallest = right;
       }
-
-      if (smallest === index) break;
-
-      const temp = this.heap[index];
-      const smallestVal = this.heap[smallest];
-      if (temp && smallestVal) {
-        this.heap[index] = smallestVal;
-        this.heap[smallest] = temp;
-      }
-      index = smallest;
+      if (smallest === i) break;
+      this.swap(i, smallest);
+      i = smallest;
     }
+  }
+
+  private swap(i: number, j: number): void {
+    [this.x[i], this.x[j]] = [this.x[j]!, this.x[i]!];
+    [this.y[i], this.y[j]] = [this.y[j]!, this.y[i]!];
+    [this.dist[i], this.dist[j]] = [this.dist[j]!, this.dist[i]!];
   }
 }
 
@@ -355,14 +402,14 @@ export function computeDijkstraMap(
 
   const map = new DijkstraMap(grid.width, grid.height);
 
-  // Priority queue using binary heap for O(log n) operations
-  const queue = new MinHeap();
+  // Priority queue using typed array based heap for O(log n) operations
+  const queue = new TypedMinHeap();
 
   // Initialize goals with distance 0
   for (const goal of goals) {
     if (grid.isInBounds(goal.x, goal.y)) {
       map.set(goal.x, goal.y, 0);
-      queue.push({ x: goal.x, y: goal.y, dist: 0 });
+      queue.push(goal.x, goal.y, 0);
     }
   }
 
@@ -401,7 +448,7 @@ export function computeDijkstraMap(
       // Update if better path found
       if (newDist < map.get(nx, ny)) {
         map.set(nx, ny, newDist);
-        queue.push({ x: nx, y: ny, dist: newDist });
+        queue.push(nx, ny, newDist);
       }
     }
   }

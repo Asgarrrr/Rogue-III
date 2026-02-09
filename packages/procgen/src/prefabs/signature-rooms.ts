@@ -1,25 +1,19 @@
 /**
  * Signature Room Prefabs
  *
- * Special room templates for key dungeon locations.
- * Theme: Medieval Fantasy / Abyss
- *
- * These prefabs define the iconic rooms that give the dungeon its character:
- * - Boss arenas with dramatic shapes
- * - Treasure vaults with defensive layouts
- * - Entrance halls that set the tone
- * - Hub rooms for non-linear navigation
+ * Distinctive room templates with unique structural characteristics.
+ * These provide variety in dungeon layouts through different shapes and features.
  */
 
 import { createTemplate } from "./template-utils";
 import type { RoomTemplate } from "./types";
 
 // =============================================================================
-// BOSS ARENA - Octagonal with pillars (12x12)
+// OCTAGONAL_LARGE - Large octagonal shape (12x12)
 // =============================================================================
 
 /**
- * Boss Arena - Large octagonal room for epic encounters
+ * Large octagonal room - spacious symmetric shape
  *
  * ```
  * ....####....
@@ -36,8 +30,8 @@ import type { RoomTemplate } from "./types";
  * ....####....
  * ```
  */
-export const BOSS_ARENA = createTemplate(
-  "boss-arena",
+export const OCTAGONAL_LARGE = createTemplate(
+  "octagonal-large",
   "custom",
   [
     [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
@@ -54,180 +48,180 @@ export const BOSS_ARENA = createTemplate(
     [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
   ],
   {
-    minLeafSize: 6,
-    compatibleTypes: ["boss"],
-    tags: ["boss", "epic", "octagonal", "symmetric", "arena"],
-  },
-);
-
-// =============================================================================
-// TREASURE VAULT - Cross-shaped with alcoves (10x10)
-// =============================================================================
-
-/**
- * Treasure Vault - Cross shape with corner alcoves
- *
- * ```
- * ##..####..##
- * ##..####..##
- * ....####....
- * ############
- * ############
- * ############
- * ############
- * ....####....
- * ##..####..##
- * ##..####..##
- * ```
- */
-export const TREASURE_VAULT = createTemplate(
-  "treasure-vault",
-  "cross",
-  [
-    [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1],
-    [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1],
-    [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
-    [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1],
-    [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1],
-  ],
-  {
-    minLeafSize: 6,
-    compatibleTypes: ["treasure"],
-    tags: ["treasure", "vault", "alcoves", "symmetric"],
-  },
-);
-
-// =============================================================================
-// ENTRANCE HALL - Grand rectangular with columns (12x8)
-// =============================================================================
-
-/**
- * Entrance Hall - Wide hall for dramatic entrances
- *
- * ```
- * ############
- * #..######..#
- * #..######..#
- * ############
- * ############
- * #..######..#
- * #..######..#
- * ############
- * ```
- */
-export const ENTRANCE_HALL = createTemplate(
-  "entrance-hall",
-  "custom",
-  [
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1],
-    [1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1],
-    [1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-  ],
-  {
-    minLeafSize: 6,
-    compatibleTypes: ["entrance"],
-    tags: ["entrance", "hall", "grand", "columns"],
-  },
-);
-
-// =============================================================================
-// SHRINE - Circular with altar center (9x9)
-// =============================================================================
-
-/**
- * Shrine - Circular room with central altar space
- *
- * ```
- * ...###...
- * ..#####..
- * .#######.
- * #########
- * #########
- * #########
- * .#######.
- * ..#####..
- * ...###...
- * ```
- */
-export const SHRINE = createTemplate(
-  "shrine",
-  "custom",
-  [
-    [0, 0, 0, 1, 1, 1, 0, 0, 0],
-    [0, 0, 1, 1, 1, 1, 1, 0, 0],
-    [0, 1, 1, 1, 1, 1, 1, 1, 0],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [0, 1, 1, 1, 1, 1, 1, 1, 0],
-    [0, 0, 1, 1, 1, 1, 1, 0, 0],
-    [0, 0, 0, 1, 1, 1, 0, 0, 0],
-  ],
-  {
-    minLeafSize: 4,
-    compatibleTypes: ["normal", "treasure"],
-    tags: ["shrine", "circular", "sacred", "symmetric"],
-  },
-);
-
-// =============================================================================
-// CROSSROADS HUB - 4-way intersection (10x10)
-// =============================================================================
-
-/**
- * Crossroads - Central hub connecting multiple paths
- *
- * ```
- * ...####...
- * ...####...
- * ...####...
- * ##########
- * ##########
- * ##########
- * ##########
- * ...####...
- * ...####...
- * ...####...
- * ```
- */
-export const CROSSROADS = createTemplate(
-  "crossroads",
-  "cross",
-  [
-    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
-  ],
-  {
-    minLeafSize: 5,
+    minLeafSize: 14, // 12x12 + padding
     compatibleTypes: ["normal"],
-    tags: ["hub", "crossroads", "junction", "symmetric"],
+    tags: ["octagonal", "large", "symmetric", "spacious"],
   },
 );
 
 // =============================================================================
-// CRYPT - L-shaped with tomb alcoves (10x8)
+// CROSS_ALCOVED - Cross-shaped with corner alcoves (10x10)
 // =============================================================================
 
 /**
- * Crypt - L-shaped room with alcove spaces for tombs
+ * Cross with alcoves - symmetric cross with corner spaces
+ *
+ * ```
+ * ##..####..##
+ * ##..####..##
+ * ....####....
+ * ############
+ * ############
+ * ############
+ * ############
+ * ....####....
+ * ##..####..##
+ * ##..####..##
+ * ```
+ */
+export const CROSS_ALCOVED = createTemplate(
+  "cross-alcoved",
+  "cross",
+  [
+    [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1],
+    [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1],
+    [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0],
+    [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1],
+    [1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1],
+  ],
+  {
+    minLeafSize: 14, // 12x10 + padding
+    compatibleTypes: ["normal"],
+    tags: ["cross", "alcoves", "symmetric"],
+  },
+);
+
+// =============================================================================
+// COLUMNED_HALL - Rectangular with columns (12x8)
+// =============================================================================
+
+/**
+ * Columned hall - wide hall with pillar spaces
+ *
+ * ```
+ * ############
+ * #..######..#
+ * #..######..#
+ * ############
+ * ############
+ * #..######..#
+ * #..######..#
+ * ############
+ * ```
+ */
+export const COLUMNED_HALL = createTemplate(
+  "columned-hall",
+  "custom",
+  [
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1],
+    [1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1],
+    [1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  ],
+  {
+    minLeafSize: 14, // 12x8 + padding
+    compatibleTypes: ["normal"],
+    tags: ["hall", "columns", "rectangular"],
+  },
+);
+
+// =============================================================================
+// CIRCULAR_MEDIUM - Circular shape (9x9)
+// =============================================================================
+
+/**
+ * Medium circular room - round symmetric shape
+ *
+ * ```
+ * ...###...
+ * ..#####..
+ * .#######.
+ * #########
+ * #########
+ * #########
+ * .#######.
+ * ..#####..
+ * ...###...
+ * ```
+ */
+export const CIRCULAR_MEDIUM = createTemplate(
+  "circular-medium",
+  "custom",
+  [
+    [0, 0, 0, 1, 1, 1, 0, 0, 0],
+    [0, 0, 1, 1, 1, 1, 1, 0, 0],
+    [0, 1, 1, 1, 1, 1, 1, 1, 0],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 1, 1, 1, 1, 1, 1, 1, 0],
+    [0, 0, 1, 1, 1, 1, 1, 0, 0],
+    [0, 0, 0, 1, 1, 1, 0, 0, 0],
+  ],
+  {
+    minLeafSize: 11, // 9x9 + padding
+    compatibleTypes: ["normal"],
+    tags: ["circular", "medium", "symmetric"],
+  },
+);
+
+// =============================================================================
+// JUNCTION_CROSS - 4-way intersection (10x10)
+// =============================================================================
+
+/**
+ * Cross junction - central hub for multiple paths
+ *
+ * ```
+ * ...####...
+ * ...####...
+ * ...####...
+ * ##########
+ * ##########
+ * ##########
+ * ##########
+ * ...####...
+ * ...####...
+ * ...####...
+ * ```
+ */
+export const JUNCTION_CROSS = createTemplate(
+  "junction-cross",
+  "cross",
+  [
+    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+    [0, 0, 0, 1, 1, 1, 1, 0, 0, 0],
+  ],
+  {
+    minLeafSize: 12, // 10x10 + padding
+    compatibleTypes: ["normal"],
+    tags: ["junction", "cross", "hub", "symmetric"],
+  },
+);
+
+// =============================================================================
+// L_SHAPED - L-shaped asymmetric (10x8)
+// =============================================================================
+
+/**
+ * L-shaped room - asymmetric corner layout
  *
  * ```
  * #######...
@@ -240,8 +234,8 @@ export const CROSSROADS = createTemplate(
  * ##########
  * ```
  */
-export const CRYPT = createTemplate(
-  "crypt",
+export const L_SHAPED = createTemplate(
+  "l-shaped",
   "l-shape",
   [
     [1, 1, 1, 1, 1, 1, 1, 0, 0, 0],
@@ -254,18 +248,18 @@ export const CRYPT = createTemplate(
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   ],
   {
-    minLeafSize: 5,
+    minLeafSize: 12, // 10x8 + padding
     compatibleTypes: ["normal"],
-    tags: ["crypt", "l-shape", "tombs", "asymmetric"],
+    tags: ["l-shape", "asymmetric", "corner"],
   },
 );
 
 // =============================================================================
-// FORGE - Rectangular with central pit (10x8)
+// DUAL_PIT - Rectangular with two pits (10x8)
 // =============================================================================
 
 /**
- * Forge - Working space with central forge pit
+ * Dual pit room - symmetric layout with two recessed areas
  *
  * ```
  * ##########
@@ -278,8 +272,8 @@ export const CRYPT = createTemplate(
  * ##########
  * ```
  */
-export const FORGE = createTemplate(
-  "forge",
+export const DUAL_PIT = createTemplate(
+  "dual-pit",
   "custom",
   [
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -292,18 +286,18 @@ export const FORGE = createTemplate(
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   ],
   {
-    minLeafSize: 5,
-    compatibleTypes: ["armory", "normal"],
-    tags: ["forge", "pits", "industrial", "symmetric"],
+    minLeafSize: 12, // 10x8 + padding
+    compatibleTypes: ["normal"],
+    tags: ["pits", "symmetric", "rectangular"],
   },
 );
 
 // =============================================================================
-// LIBRARY - Rectangular with shelf spaces (10x8)
+// ALCOVED_SYMMETRIC - Rectangular with alcoves (10x8)
 // =============================================================================
 
 /**
- * Library - Room with alcoves for bookshelves
+ * Symmetric alcoved room - rectangular with side recesses
  *
  * ```
  * ##########
@@ -316,8 +310,8 @@ export const FORGE = createTemplate(
  * ##########
  * ```
  */
-export const LIBRARY = createTemplate(
-  "library",
+export const ALCOVED_SYMMETRIC = createTemplate(
+  "alcoved-symmetric",
   "custom",
   [
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -330,18 +324,18 @@ export const LIBRARY = createTemplate(
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
   ],
   {
-    minLeafSize: 5,
-    compatibleTypes: ["library", "normal"],
-    tags: ["library", "shelves", "knowledge", "symmetric"],
+    minLeafSize: 12, // 10x8 + padding
+    compatibleTypes: ["normal"],
+    tags: ["alcoves", "symmetric", "rectangular"],
   },
 );
 
 // =============================================================================
-// CAVERN - Organic blob shape (11x9)
+// ORGANIC_BLOB - Organic irregular shape (11x9)
 // =============================================================================
 
 /**
- * Cavern - Natural organic cave shape
+ * Organic blob - natural irregular shape
  *
  * ```
  * ...#####...
@@ -355,8 +349,8 @@ export const LIBRARY = createTemplate(
  * ....###....
  * ```
  */
-export const CAVERN = createTemplate(
-  "cavern",
+export const ORGANIC_BLOB = createTemplate(
+  "organic-blob",
   "custom",
   [
     [0, 0, 0, 1, 1, 1, 1, 1, 0, 0, 0],
@@ -370,18 +364,18 @@ export const CAVERN = createTemplate(
     [0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0],
   ],
   {
-    minLeafSize: 6,
-    compatibleTypes: ["cavern", "normal"],
-    tags: ["cavern", "natural", "organic"],
+    minLeafSize: 13, // 11x9 + padding
+    compatibleTypes: ["normal", "cavern"],
+    tags: ["organic", "natural", "irregular"],
   },
 );
 
 // =============================================================================
-// THRONE ROOM - Grand with raised platform (14x10)
+// GRAND_PILLARED - Large with pillars and platform (14x10)
 // =============================================================================
 
 /**
- * Throne Room - Regal room with platform and pillars
+ * Grand pillared room - spacious with pillars and entry platform
  *
  * ```
  * ##############
@@ -396,8 +390,8 @@ export const CAVERN = createTemplate(
  * ##....####..##
  * ```
  */
-export const THRONE_ROOM = createTemplate(
-  "throne-room",
+export const GRAND_PILLARED = createTemplate(
+  "grand-pillared",
   "custom",
   [
     [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
@@ -412,9 +406,9 @@ export const THRONE_ROOM = createTemplate(
     [1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 0, 0, 1, 1],
   ],
   {
-    minLeafSize: 6,
-    compatibleTypes: ["boss"],
-    tags: ["throne", "regal", "grand", "pillars"],
+    minLeafSize: 16, // 14x10 + padding
+    compatibleTypes: ["normal"],
+    tags: ["pillars", "large", "grand", "platform"],
   },
 );
 
@@ -426,16 +420,16 @@ export const THRONE_ROOM = createTemplate(
  * All signature room templates
  */
 export const SIGNATURE_PREFABS: readonly RoomTemplate[] = [
-  BOSS_ARENA,
-  TREASURE_VAULT,
-  ENTRANCE_HALL,
-  SHRINE,
-  CROSSROADS,
-  CRYPT,
-  FORGE,
-  LIBRARY,
-  CAVERN,
-  THRONE_ROOM,
+  OCTAGONAL_LARGE,
+  CROSS_ALCOVED,
+  COLUMNED_HALL,
+  CIRCULAR_MEDIUM,
+  JUNCTION_CROSS,
+  L_SHAPED,
+  DUAL_PIT,
+  ALCOVED_SYMMETRIC,
+  ORGANIC_BLOB,
+  GRAND_PILLARED,
 ];
 
 /**

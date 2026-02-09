@@ -5,8 +5,7 @@
  * These checks help ensure generated dungeons meet aesthetic and playability standards.
  */
 
-import { CellType, Grid } from "../core/grid";
-import { floodFill } from "../core/grid/flood-fill";
+import { BitGridPool, CellType, floodFillBFS, Grid } from "../core/grid";
 import type {
   DungeonArtifact,
   QualityAssessment,
@@ -15,6 +14,9 @@ import type {
   Room,
 } from "../pipeline/types";
 import { DEFAULT_QUALITY_THRESHOLDS } from "../pipeline/types";
+
+// Re-export for convenience
+export { DEFAULT_QUALITY_THRESHOLDS } from "../pipeline/types";
 
 /**
  * Assess the quality of a generated dungeon.
@@ -27,9 +29,9 @@ import { DEFAULT_QUALITY_THRESHOLDS } from "../pipeline/types";
  * const result = generate(config);
  * if (result.success) {
  *   const qa = assessQuality(result.artifact);
- *   if (!qa.passed) {
+ *   if (!qa.success) {
  *     console.warn(`Quality score: ${qa.score}/100`);
- *     qa.checks.filter(c => !c.passed).forEach(c => console.warn(c.message));
+ *     qa.checks.filter(c => !c.success).forEach(c => console.warn(c.message));
  *   }
  * }
  * ```
@@ -41,22 +43,14 @@ export function assessQuality(
   const opts = { ...DEFAULT_QUALITY_THRESHOLDS, ...thresholds };
   const checks: QualityCheck[] = [];
 
-  // Reconstruct grid for connectivity check
-  const grid = new Grid(dungeon.width, dungeon.height, CellType.WALL);
-  for (let y = 0; y < dungeon.height; y++) {
-    for (let x = 0; x < dungeon.width; x++) {
-      const cell = dungeon.terrain[y * dungeon.width + x];
-      if (cell !== undefined) {
-        grid.set(x, y, cell as CellType);
-      }
-    }
-  }
+  // Reconstruct grid for connectivity checks
+  const grid = Grid.fromTerrain(dungeon.width, dungeon.height, dungeon.terrain);
 
   // Check 1: Room count
   const roomCount = dungeon.rooms.length;
   checks.push({
     name: "room-count-min",
-    passed: roomCount >= opts.minRooms,
+    success: roomCount >= opts.minRooms,
     value: roomCount,
     threshold: opts.minRooms,
     message:
@@ -67,7 +61,7 @@ export function assessQuality(
 
   checks.push({
     name: "room-count-max",
-    passed: roomCount <= opts.maxRooms,
+    success: roomCount <= opts.maxRooms,
     value: roomCount,
     threshold: opts.maxRooms,
     message:
@@ -83,7 +77,7 @@ export function assessQuality(
 
   checks.push({
     name: "floor-ratio-min",
-    passed: floorRatio >= opts.minFloorRatio,
+    success: floorRatio >= opts.minFloorRatio,
     value: floorRatio,
     threshold: opts.minFloorRatio,
     message:
@@ -94,7 +88,7 @@ export function assessQuality(
 
   checks.push({
     name: "floor-ratio-max",
-    passed: floorRatio <= opts.maxFloorRatio,
+    success: floorRatio <= opts.maxFloorRatio,
     value: floorRatio,
     threshold: opts.maxFloorRatio,
     message:
@@ -107,7 +101,7 @@ export function assessQuality(
   const avgRoomSize = calculateAvgRoomSize(dungeon.rooms);
   checks.push({
     name: "avg-room-size",
-    passed: avgRoomSize >= opts.minAvgRoomSize,
+    success: avgRoomSize >= opts.minAvgRoomSize,
     value: avgRoomSize,
     threshold: opts.minAvgRoomSize,
     message:
@@ -117,10 +111,13 @@ export function assessQuality(
   });
 
   // Check 4: Dead-end ratio (rooms with only 1 connection)
-  const deadEndRatio = calculateDeadEndRatio(dungeon.rooms, dungeon.connections);
+  const deadEndRatio = calculateDeadEndRatio(
+    dungeon.rooms,
+    dungeon.connections,
+  );
   checks.push({
     name: "dead-end-ratio",
-    passed: deadEndRatio <= opts.maxDeadEndRatio,
+    success: deadEndRatio <= opts.maxDeadEndRatio,
     value: deadEndRatio,
     threshold: opts.maxDeadEndRatio,
     message:
@@ -129,21 +126,119 @@ export function assessQuality(
         : `Dead-end ratio (${(deadEndRatio * 100).toFixed(1)}%) too high (max: ${(opts.maxDeadEndRatio * 100).toFixed(1)}%)`,
   });
 
-  // Check 5: Full connectivity
+  // Check 5: Entrance->Exit path length sanity
+  const entranceExitPathChecks = checkEntranceExitPathLength(
+    grid,
+    dungeon,
+    floorCells,
+    opts,
+  );
+  checks.push(...entranceExitPathChecks);
+
+  // Check 6: Full connectivity
   if (opts.requireFullConnectivity && dungeon.rooms.length > 0) {
     const connectivityResult = checkFullConnectivity(grid, dungeon);
     checks.push(connectivityResult);
   }
 
   // Calculate overall score (0-100)
-  const passedChecks = checks.filter((c) => c.passed).length;
+  let passedChecks = 0;
+  for (const check of checks) {
+    if (check.success) {
+      passedChecks++;
+    }
+  }
   const score = Math.round((passedChecks / checks.length) * 100);
 
   return {
-    passed: checks.every((c) => c.passed),
+    success: passedChecks === checks.length,
     checks,
     score,
   };
+}
+
+function checkEntranceExitPathLength(
+  grid: Grid,
+  dungeon: DungeonArtifact,
+  floorCells: number,
+  thresholds: QualityThresholds,
+): QualityCheck[] {
+  const entrance = dungeon.spawns.find((s) => s.type === "entrance");
+  const exit = dungeon.spawns.find((s) => s.type === "exit");
+
+  if (!entrance || !exit) {
+    return [
+      {
+        name: "entrance-exit-path-min",
+        success: true,
+        value: 0,
+        threshold: thresholds.minEntranceExitPathLength,
+        message: "Skipped: entrance or exit spawn is missing",
+      },
+      {
+        name: "entrance-exit-path-max",
+        success: true,
+        value: 0,
+        threshold: 0,
+        message: "Skipped: entrance or exit spawn is missing",
+      },
+    ];
+  }
+
+  const pathLength = shortestPathLength(
+    grid,
+    entrance.position.x,
+    entrance.position.y,
+    exit.position.x,
+    exit.position.y,
+  );
+
+  if (pathLength === null) {
+    return [
+      {
+        name: "entrance-exit-path-min",
+        success: false,
+        value: 0,
+        threshold: thresholds.minEntranceExitPathLength,
+        message: "No walkable path between entrance and exit",
+      },
+      {
+        name: "entrance-exit-path-max",
+        success: false,
+        value: 0,
+        threshold: 0,
+        message: "No walkable path between entrance and exit",
+      },
+    ];
+  }
+
+  const maxAllowed = Math.max(
+    thresholds.minEntranceExitPathLength,
+    Math.floor(floorCells * thresholds.maxEntranceExitPathFloorRatio),
+  );
+
+  return [
+    {
+      name: "entrance-exit-path-min",
+      success: pathLength >= thresholds.minEntranceExitPathLength,
+      value: pathLength,
+      threshold: thresholds.minEntranceExitPathLength,
+      message:
+        pathLength >= thresholds.minEntranceExitPathLength
+          ? `Entrance->exit path length (${pathLength}) meets minimum`
+          : `Entrance->exit path length (${pathLength}) below minimum (${thresholds.minEntranceExitPathLength})`,
+    },
+    {
+      name: "entrance-exit-path-max",
+      success: pathLength <= maxAllowed,
+      value: pathLength,
+      threshold: maxAllowed,
+      message:
+        pathLength <= maxAllowed
+          ? `Entrance->exit path length (${pathLength}) within maximum (${maxAllowed})`
+          : `Entrance->exit path length (${pathLength}) exceeds maximum (${maxAllowed})`,
+    },
+  ];
 }
 
 /**
@@ -162,7 +257,10 @@ function countFloorCells(terrain: Uint8Array): number {
  */
 function calculateAvgRoomSize(rooms: readonly Room[]): number {
   if (rooms.length === 0) return 0;
-  const totalSize = rooms.reduce((sum, r) => sum + r.width * r.height, 0);
+  let totalSize = 0;
+  for (const room of rooms) {
+    totalSize += room.width * room.height;
+  }
   return totalSize / rooms.length;
 }
 
@@ -191,9 +289,12 @@ function calculateDeadEndRatio(
     );
   }
 
-  const deadEnds = Array.from(connectionCount.values()).filter(
-    (c) => c === 1,
-  ).length;
+  let deadEnds = 0;
+  for (const count of connectionCount.values()) {
+    if (count === 1) {
+      deadEnds++;
+    }
+  }
   return deadEnds / rooms.length;
 }
 
@@ -208,34 +309,45 @@ function checkFullConnectivity(
   if (!entrance) {
     return {
       name: "full-connectivity",
-      passed: false,
+      success: false,
       value: 0,
       threshold: 1,
       message: "No entrance spawn point found",
     };
   }
 
-  // Flood fill from entrance
-  const reachable = floodFill(grid, entrance.position.x, entrance.position.y, {
-    targetValue: CellType.FLOOR,
-  });
-  const reachableSet = new Set(reachable.map((p) => `${p.x},${p.y}`));
+  const entranceIsFloor =
+    grid.get(entrance.position.x, entrance.position.y) === CellType.FLOOR;
+  const reachable = entranceIsFloor
+    ? floodFillBFS(
+        dungeon.width,
+        dungeon.height,
+        entrance.position.x,
+        entrance.position.y,
+        (x, y) => grid.getUnsafe(x, y) === CellType.FLOOR,
+      )
+    : null;
 
   // Check each room has at least one reachable floor tile
   let reachableRooms = 0;
-  for (const room of dungeon.rooms) {
-    let roomReachable = false;
-    for (let y = room.y; y < room.y + room.height && !roomReachable; y++) {
-      for (let x = room.x; x < room.x + room.width && !roomReachable; x++) {
-        if (
-          grid.get(x, y) === CellType.FLOOR &&
-          reachableSet.has(`${x},${y}`)
-        ) {
-          roomReachable = true;
+  try {
+    for (const room of dungeon.rooms) {
+      let roomReachable = false;
+      if (reachable) {
+        for (let y = room.y; y < room.y + room.height && !roomReachable; y++) {
+          for (let x = room.x; x < room.x + room.width && !roomReachable; x++) {
+            if (grid.get(x, y) === CellType.FLOOR && reachable.get(x, y)) {
+              roomReachable = true;
+            }
+          }
         }
       }
+      if (roomReachable) reachableRooms++;
     }
-    if (roomReachable) reachableRooms++;
+  } finally {
+    if (reachable) {
+      BitGridPool.release(reachable);
+    }
   }
 
   const connectivityRatio =
@@ -243,7 +355,7 @@ function checkFullConnectivity(
 
   return {
     name: "full-connectivity",
-    passed: connectivityRatio === 1,
+    success: connectivityRatio === 1,
     value: connectivityRatio,
     threshold: 1,
     message:
@@ -253,141 +365,106 @@ function checkFullConnectivity(
   };
 }
 
-// =============================================================================
-// SEED REGRESSION TESTING
-// =============================================================================
-
-/**
- * Golden seed entry for regression testing
- */
-export interface GoldenSeed {
-  /** Seed value */
-  readonly seed: number;
-  /** Expected checksum */
-  readonly checksum: string;
-  /** Algorithm used */
-  readonly algorithm: "bsp" | "cellular";
-  /** Grid dimensions */
-  readonly width: number;
-  readonly height: number;
-  /** Optional description */
-  readonly description?: string;
-}
-
-/**
- * Regression test result
- */
-export interface RegressionResult {
-  readonly seed: number;
-  readonly passed: boolean;
-  readonly expectedChecksum: string;
-  readonly actualChecksum: string;
-  readonly message: string;
-}
-
-/**
- * Run regression tests against golden seeds.
- *
- * @param goldenSeeds - Array of golden seed definitions
- * @param generateFn - Generation function to test
- * @returns Array of test results
- *
- * @example
- * ```typescript
- * const golden: GoldenSeed[] = [
- *   { seed: 12345, checksum: "v2:abc123...", algorithm: "bsp", width: 80, height: 60 },
- *   { seed: 67890, checksum: "v2:def456...", algorithm: "bsp", width: 80, height: 60 },
- * ];
- *
- * const results = runRegressionTests(golden, (config) => generate(config));
- * const failures = results.filter(r => !r.passed);
- * if (failures.length > 0) {
- *   throw new Error(`${failures.length} regression(s) detected`);
- * }
- * ```
- */
-export function runRegressionTests(
-  goldenSeeds: readonly GoldenSeed[],
-  generateFn: (config: {
-    seed: number;
-    algorithm: "bsp" | "cellular";
-    width: number;
-    height: number;
-  }) => { success: boolean; artifact?: { checksum: string } },
-): RegressionResult[] {
-  const results: RegressionResult[] = [];
-
-  for (const golden of goldenSeeds) {
-    const result = generateFn({
-      seed: golden.seed,
-      algorithm: golden.algorithm,
-      width: golden.width,
-      height: golden.height,
-    });
-
-    if (!result.success || !result.artifact) {
-      results.push({
-        seed: golden.seed,
-        passed: false,
-        expectedChecksum: golden.checksum,
-        actualChecksum: "GENERATION_FAILED",
-        message: `Generation failed for seed ${golden.seed}`,
-      });
-      continue;
-    }
-
-    const passed = result.artifact.checksum === golden.checksum;
-    results.push({
-      seed: golden.seed,
-      passed,
-      expectedChecksum: golden.checksum,
-      actualChecksum: result.artifact.checksum,
-      message: passed
-        ? `Seed ${golden.seed}: checksum matches`
-        : `Seed ${golden.seed}: checksum mismatch (expected ${golden.checksum}, got ${result.artifact.checksum})`,
-    });
+function shortestPathLength(
+  grid: Grid,
+  startX: number,
+  startY: number,
+  goalX: number,
+  goalY: number,
+): number | null {
+  if (!grid.isInBounds(startX, startY) || !grid.isInBounds(goalX, goalY)) {
+    return null;
+  }
+  if (
+    grid.get(startX, startY) !== CellType.FLOOR ||
+    grid.get(goalX, goalY) !== CellType.FLOOR
+  ) {
+    return null;
+  }
+  if (startX === goalX && startY === goalY) {
+    return 0;
   }
 
-  return results;
-}
+  const width = grid.width;
+  const height = grid.height;
+  const totalCells = width * height;
+  const visited = new Uint8Array(totalCells);
+  const queueIndex = new Int32Array(totalCells);
+  const queueDist = new Int32Array(totalCells);
+  const goalIndex = goalY * width + goalX;
 
-/**
- * Generate golden seeds from a set of test seeds.
- * Use this to create the initial golden seed file.
- *
- * @example
- * ```typescript
- * const seeds = [12345, 67890, 11111];
- * const golden = generateGoldenSeeds(seeds, "bsp", 80, 60, (config) => generate(config));
- * // Save to file: JSON.stringify(golden, null, 2)
- * ```
- */
-export function generateGoldenSeeds(
-  seeds: readonly number[],
-  algorithm: "bsp" | "cellular",
-  width: number,
-  height: number,
-  generateFn: (config: {
-    seed: number;
-    algorithm: "bsp" | "cellular";
-    width: number;
-    height: number;
-  }) => { success: boolean; artifact?: { checksum: string } },
-): GoldenSeed[] {
-  const golden: GoldenSeed[] = [];
+  const startIndex = startY * width + startX;
+  visited[startIndex] = 1;
+  queueIndex[0] = startIndex;
+  queueDist[0] = 0;
 
-  for (const seed of seeds) {
-    const result = generateFn({ seed, algorithm, width, height });
-    if (result.success && result.artifact) {
-      golden.push({
-        seed,
-        checksum: result.artifact.checksum,
-        algorithm,
-        width,
-        height,
-      });
+  let head = 0;
+  let tail = 1;
+
+  while (head < tail) {
+    const index = queueIndex[head];
+    const dist = queueDist[head];
+    head++;
+
+    if (index === undefined || dist === undefined) continue;
+
+    const y = (index / width) | 0;
+    const x = index - y * width;
+
+    const nextDist = dist + 1;
+
+    // N
+    if (y > 0) {
+      const ny = y - 1;
+      const index = ny * width + x;
+      if (visited[index] === 0 && grid.getUnsafe(x, ny) === CellType.FLOOR) {
+        if (index === goalIndex) return nextDist;
+        visited[index] = 1;
+        queueIndex[tail] = index;
+        queueDist[tail] = nextDist;
+        tail++;
+      }
+    }
+
+    // E
+    if (x < width - 1) {
+      const nx = x + 1;
+      const index = y * width + nx;
+      if (visited[index] === 0 && grid.getUnsafe(nx, y) === CellType.FLOOR) {
+        if (index === goalIndex) return nextDist;
+        visited[index] = 1;
+        queueIndex[tail] = index;
+        queueDist[tail] = nextDist;
+        tail++;
+      }
+    }
+
+    // S
+    if (y < height - 1) {
+      const ny = y + 1;
+      const index = ny * width + x;
+      if (visited[index] === 0 && grid.getUnsafe(x, ny) === CellType.FLOOR) {
+        if (index === goalIndex) return nextDist;
+        visited[index] = 1;
+        queueIndex[tail] = index;
+        queueDist[tail] = nextDist;
+        tail++;
+      }
+    }
+
+    // W
+    if (x > 0) {
+      const nx = x - 1;
+      const index = y * width + nx;
+      if (visited[index] === 0 && grid.getUnsafe(nx, y) === CellType.FLOOR) {
+        if (index === goalIndex) return nextDist;
+        visited[index] = 1;
+        queueIndex[tail] = index;
+        queueDist[tail] = nextDist;
+        tail++;
+      }
     }
   }
 
-  return golden;
+  return null;
 }

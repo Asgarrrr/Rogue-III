@@ -53,9 +53,8 @@ export function calculateBFSDistances<TNodeId>(
     }
   }
 
-  const maxDistance = distances.size > 0
-    ? Math.max(0, ...distances.values())
-    : 0;
+  const maxDistance =
+    distances.size > 0 ? Math.max(0, ...distances.values()) : 0;
 
   return { distances, maxDistance };
 }

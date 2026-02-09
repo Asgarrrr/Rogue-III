@@ -31,7 +31,7 @@ export const L_SHAPE_BASE = createTemplate(
   ],
   {
     minLeafSize: 4,
-    compatibleTypes: ["normal", "library", "armory"],
+    compatibleTypes: ["normal"],
     tags: ["asymmetric", "corner"],
   },
 );
@@ -57,7 +57,7 @@ export const L_SHAPE_LARGE = createTemplate(
   ],
   {
     minLeafSize: 5,
-    compatibleTypes: ["normal", "library", "armory", "boss"],
+    compatibleTypes: ["normal"],
     tags: ["asymmetric", "corner", "large"],
   },
 );
@@ -85,7 +85,7 @@ export const T_SHAPE_BASE = createTemplate(
   ],
   {
     minLeafSize: 4,
-    compatibleTypes: ["normal", "treasure", "library"],
+    compatibleTypes: ["normal"],
     tags: ["junction", "symmetric-x"],
   },
 );
@@ -111,7 +111,7 @@ export const T_SHAPE_LARGE = createTemplate(
   ],
   {
     minLeafSize: 6,
-    compatibleTypes: ["normal", "treasure", "boss"],
+    compatibleTypes: ["normal"],
     tags: ["junction", "symmetric-x", "large"],
   },
 );
@@ -139,7 +139,7 @@ export const CROSS_BASE = createTemplate(
   ],
   {
     minLeafSize: 4,
-    compatibleTypes: ["treasure", "boss", "normal"],
+    compatibleTypes: ["normal"],
     tags: ["symmetric", "central"],
   },
 );
@@ -167,7 +167,7 @@ export const CROSS_LARGE = createTemplate(
   ],
   {
     minLeafSize: 6,
-    compatibleTypes: ["boss", "treasure"],
+    compatibleTypes: ["normal"],
     tags: ["symmetric", "central", "large"],
   },
 );
@@ -195,7 +195,7 @@ export const PLUS_BASE = createTemplate(
   ],
   {
     minLeafSize: 6,
-    compatibleTypes: ["boss", "treasure", "entrance"],
+    compatibleTypes: ["normal"],
     tags: ["symmetric", "central", "spacious"],
   },
 );
@@ -227,7 +227,7 @@ export const DIAMOND = createTemplate(
   ],
   {
     minLeafSize: 6,
-    compatibleTypes: ["treasure", "boss"],
+    compatibleTypes: ["normal"],
     tags: ["symmetric", "central", "unique"],
   },
 );
@@ -251,7 +251,7 @@ export const CORRIDOR_ROOM = createTemplate(
   ],
   {
     minLeafSize: 8,
-    compatibleTypes: ["normal", "armory"],
+    compatibleTypes: ["normal"],
     tags: ["elongated", "passage"],
   },
 );

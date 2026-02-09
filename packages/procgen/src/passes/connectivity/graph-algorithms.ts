@@ -4,6 +4,7 @@
  * Reusable graph algorithms for room connectivity.
  */
 
+import { UnionFind } from "../../core/algorithms";
 import type { Connection, Room } from "../../pipeline/types";
 
 /**
@@ -45,60 +46,58 @@ export function buildMST(
 ): [number, number][] {
   if (nodeCount <= 1 || edges.length === 0) return [];
 
-  // Sort edges by weight
-  const sortedEdges = [...edges].sort((a, b) => a.weight - b.weight);
+  // Sort edges by weight with deterministic tie-breaking.
+  const sortedEdges = [...edges].sort((a, b) => {
+    if (a.weight !== b.weight) return a.weight - b.weight;
+    if (a.from !== b.from) return a.from - b.from;
+    return a.to - b.to;
+  });
 
-  // Union-Find
-  const parent = new Map<number, number>();
-  const rank = new Map<number, number>();
-
-  for (let i = 0; i < nodeCount; i++) {
-    parent.set(i, i);
-    rank.set(i, 0);
+  // Create mapping from room IDs to sequential indices (0..nodeCount-1)
+  const roomIds = new Set<number>();
+  for (const edge of edges) {
+    roomIds.add(edge.from);
+    roomIds.add(edge.to);
   }
 
-  function find(x: number): number {
-    const px = parent.get(x);
-    if (px === undefined) return x;
-    if (px !== x) {
-      const root = find(px);
-      parent.set(x, root);
-      return root;
-    }
-    return px;
+  const roomIdToIndex = new Map<number, number>();
+  let index = 0;
+  for (const roomId of roomIds) {
+    roomIdToIndex.set(roomId, index);
+    index++;
   }
 
-  function union(x: number, y: number): boolean {
-    const px = find(x);
-    const py = find(y);
-    if (px === py) return false;
+  const roomCount = roomIdToIndex.size;
 
-    const rx = rank.get(px) ?? 0;
-    const ry = rank.get(py) ?? 0;
-
-    if (rx < ry) {
-      parent.set(px, py);
-    } else if (rx > ry) {
-      parent.set(py, px);
-    } else {
-      parent.set(py, px);
-      rank.set(px, rx + 1);
-    }
-    return true;
-  }
+  // Union-Find with sequential indices
+  const uf = new UnionFind(Math.max(nodeCount, roomCount));
+  const targetMstSize = Math.max(0, roomCount - 1);
 
   // Build MST
   const mst: [number, number][] = [];
 
   for (const edge of sortedEdges) {
-    if (union(edge.from, edge.to)) {
-      mst.push([edge.from, edge.to]);
-      if (mst.length === nodeCount - 1) break;
+    const fromIndex = roomIdToIndex.get(edge.from);
+    const toIndex = roomIdToIndex.get(edge.to);
+
+    if (fromIndex !== undefined && toIndex !== undefined) {
+      if (uf.union(fromIndex, toIndex)) {
+        // Store original room IDs in the MST
+        mst.push([edge.from, edge.to]);
+        if (mst.length === targetMstSize) break;
+      }
     }
   }
 
   return mst;
 }
+
+/**
+ * Create a unique numeric key for an edge
+ * Uses a large multiplier to combine two node IDs into a single number
+ */
+const edgeKey = (a: number, b: number) =>
+  `${Math.min(a, b)}:${Math.max(a, b)}`;
 
 /**
  * Add random extra edges to the MST for loops
@@ -110,18 +109,15 @@ export function addExtraEdges(
   rng: () => number,
 ): [number, number][] {
   const result: [number, number][] = [...mstEdges];
-  const mstSet = new Set(
-    mstEdges.map(([a, b]) => `${Math.min(a, b)},${Math.max(a, b)}`),
-  );
+  const mstSet = new Set(mstEdges.map(([a, b]) => edgeKey(a, b)));
 
-  // Filter edges not in MST
-  const nonMstEdges = allEdges.filter((e) => {
-    const key = `${Math.min(e.from, e.to)},${Math.max(e.from, e.to)}`;
-    return !mstSet.has(key);
+  // Sort by weight and add some extra edges.
+  const nonMstEdges = allEdges.filter((e) => !mstSet.has(edgeKey(e.from, e.to)));
+  nonMstEdges.sort((a, b) => {
+    if (a.weight !== b.weight) return a.weight - b.weight;
+    if (a.from !== b.from) return a.from - b.from;
+    return a.to - b.to;
   });
-
-  // Sort by weight and add some extra edges
-  nonMstEdges.sort((a, b) => a.weight - b.weight);
 
   const extraCount = Math.floor(nonMstEdges.length * extraRatio);
   for (let i = 0; i < extraCount && i < nonMstEdges.length; i++) {
@@ -287,9 +283,12 @@ export function calculateRoomMetadata(
 ): Map<number, RoomMetadata> {
   const metadata = new Map<number, RoomMetadata>();
 
-  // Find entrance if not provided
+  // Find entrance if not provided - use distanceFromEntrance=0 or first room
   const startId =
-    entranceRoomId ?? rooms.find((r) => r.type === "entrance")?.id ?? 0;
+    entranceRoomId ??
+    rooms.find((r) => r.distanceFromEntrance === 0)?.id ??
+    rooms[0]?.id ??
+    0;
 
   const distances = calculateRoomDistances(rooms, connections, startId);
   const connectionCounts = calculateConnectionCounts(rooms, connections);

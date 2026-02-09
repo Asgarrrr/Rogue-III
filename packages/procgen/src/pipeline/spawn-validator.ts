@@ -74,42 +74,91 @@ export function findNearestFloorForSpawn(
     return { x: startX, y: startY };
   }
 
-  // BFS to find nearest floor
-  const visited = new Set<string>();
-  const queue: Array<{ x: number; y: number; dist: number }> = [
-    { x: startX, y: startY, dist: 0 },
-  ];
-  visited.add(`${startX},${startY}`);
+  // BFS to find nearest floor (allocation-free neighbor expansion)
+  const width = grid.width;
+  const height = grid.height;
+  const visited = new Uint8Array(width * height);
+  const queueX: number[] = [startX];
+  const queueY: number[] = [startY];
+  const queueDist: number[] = [0];
+  visited[startY * width + startX] = 1;
+  let queueHead = 0;
 
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current) break;
+  while (queueHead < queueX.length) {
+    const x = queueX[queueHead];
+    const y = queueY[queueHead];
+    const dist = queueDist[queueHead];
+    queueHead++;
+    if (x === undefined || y === undefined || dist === undefined) break;
 
     // Check if we've exceeded max distance
-    if (current.dist > maxDistance) {
+    if (dist >= maxDistance) {
       continue;
     }
 
-    // Check all 4-connected neighbors
-    const neighbors = grid.getNeighbors4(current.x, current.y);
+    const nextDist = dist + 1;
 
-    for (const neighbor of neighbors) {
-      const key = `${neighbor.x},${neighbor.y}`;
-      if (visited.has(key)) continue;
+    // Check all 4-connected neighbors in deterministic N, E, S, W order.
+    // This preserves existing tie-breaking behavior from DIRECTIONS_4.
 
-      visited.add(key);
-
-      // Found a floor tile
-      if (grid.get(neighbor.x, neighbor.y) === CellType.FLOOR) {
-        return { x: neighbor.x, y: neighbor.y };
+    // North
+    if (y > 0) {
+      const ny = y - 1;
+      const index = ny * width + x;
+      if (visited[index] === 0) {
+        visited[index] = 1;
+        if (grid.getUnsafe(x, ny) === CellType.FLOOR) {
+          return { x, y: ny };
+        }
+        queueX.push(x);
+        queueY.push(ny);
+        queueDist.push(nextDist);
       }
+    }
 
-      // Add to queue for further exploration
-      queue.push({
-        x: neighbor.x,
-        y: neighbor.y,
-        dist: current.dist + 1,
-      });
+    // East
+    if (x < width - 1) {
+      const nx = x + 1;
+      const index = y * width + nx;
+      if (visited[index] === 0) {
+        visited[index] = 1;
+        if (grid.getUnsafe(nx, y) === CellType.FLOOR) {
+          return { x: nx, y };
+        }
+        queueX.push(nx);
+        queueY.push(y);
+        queueDist.push(nextDist);
+      }
+    }
+
+    // South
+    if (y < height - 1) {
+      const ny = y + 1;
+      const index = ny * width + x;
+      if (visited[index] === 0) {
+        visited[index] = 1;
+        if (grid.getUnsafe(x, ny) === CellType.FLOOR) {
+          return { x, y: ny };
+        }
+        queueX.push(x);
+        queueY.push(ny);
+        queueDist.push(nextDist);
+      }
+    }
+
+    // West
+    if (x > 0) {
+      const nx = x - 1;
+      const index = y * width + nx;
+      if (visited[index] === 0) {
+        visited[index] = 1;
+        if (grid.getUnsafe(nx, y) === CellType.FLOOR) {
+          return { x: nx, y };
+        }
+        queueX.push(nx);
+        queueY.push(y);
+        queueDist.push(nextDist);
+      }
     }
   }
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { DungeonSeed } from "../types/dungeon";
 
 const UINT32_MAX = 0xffffffff;
 const NonNegativeIntSchema = z
@@ -18,6 +19,19 @@ export const DungeonSeedSchema = z.object({
     .regex(/^\d+\.\d+\.\d+$/, { error: "Invalid version format" }),
   timestamp: z.number().int().positive({ error: "Timestamp must be positive" }),
 });
+
+/**
+ * Factory that validates and brands a DungeonSeed.
+ * This ensures only validated seeds can be used at compile time.
+ */
+export function createValidatedSeed(
+  input: z.infer<typeof DungeonSeedSchema>
+): DungeonSeed {
+  // Validate the input against the schema
+  const validated = DungeonSeedSchema.parse(input);
+  // Cast to branded type after validation
+  return validated as DungeonSeed;
+}
 
 export const EncodedSeedSchema = z
   .base64url()

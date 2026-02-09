@@ -1,64 +1,93 @@
 import { choice, probability, range, shuffle } from "./rng";
 
 /**
- * Deterministic PRNG using the 64-bit xorshift128+ algorithm.
+ * Deterministic PRNG using the xoshiro128++ algorithm.
  *
- * - Two 64-bit lanes with SplitMix64 seeding for decorrelated streams
- * - Returns a 53-bit mantissa-friendly double in [0, 1)
+ * - Fast 32-bit operations only (no BigInt overhead)
+ * - Four 32-bit state words with SplitMix32 seeding
+ * - Returns a double in [0, 1) with good distribution
  * - State can be saved/restored for perfect replayability
  *
- * Reference: http://xorshift.di.unimi.it/xorshift128plus.c
+ * Reference: https://prng.di.unimi.it/xoshiro128plusplus.c
+ * This is the recommended replacement for xorshift128+
  */
-const UINT64_MASK = (1n << 64n) - 1n;
-const DOUBLE_DENOMINATOR = 0x1fffffffffffffn; // 2^53 - 1, max safe mantissa
 
-function splitMix64(seed: bigint): bigint {
-  let z = (seed + 0x9e3779b97f4a7c15n) & UINT64_MASK;
-  z = ((z ^ (z >> 30n)) * 0xbf58476d1ce4e5b9n) & UINT64_MASK;
-  z = ((z ^ (z >> 27n)) * 0x94d049bb133111ebn) & UINT64_MASK;
-  return z ^ (z >> 31n);
+/**
+ * SplitMix32 for state initialization from a single seed.
+ * Ensures good state diffusion even from poor seeds.
+ */
+function splitmix32(seed: number): () => number {
+  let z = seed >>> 0;
+  return () => {
+    z = (z + 0x9e3779b9) >>> 0;
+    let t = z;
+    t = Math.imul(t ^ (t >>> 16), 0x21f0aaad);
+    t = Math.imul(t ^ (t >>> 15), 0x735a2d97);
+    return (t ^ (t >>> 15)) >>> 0;
+  };
 }
 
+/**
+ * 32-bit rotate left
+ */
+function rotl(x: number, k: number): number {
+  return ((x << k) | (x >>> (32 - k))) >>> 0;
+}
+
+/**
+ * State type for xoshiro128++ (4 x 32-bit words)
+ */
+export type RngState = [number, number, number, number];
+
 export class SeededRandom {
-  private state: [bigint, bigint];
+  private s: RngState;
 
   constructor(seed: number | bigint) {
-    const normalized = BigInt.asUintN(64, BigInt(seed));
-    const s0 = splitMix64(normalized);
-    let s1 = splitMix64(normalized ^ 0x9e3779b97f4a7c15n);
-    // Avoid the all-zero forbidden state
-    if ((s0 | s1) === 0n) {
-      s1 = 1n;
+    // Convert bigint to number if necessary (take lower 32 bits)
+    const seedNum =
+      typeof seed === "bigint" ? Number(seed & 0xffffffffn) : seed;
+    const mix = splitmix32(seedNum >>> 0);
+
+    // Initialize state with splitmix32
+    this.s = [mix(), mix(), mix(), mix()];
+
+    // Ensure non-zero state (xoshiro requires at least one non-zero word)
+    if ((this.s[0] | this.s[1] | this.s[2] | this.s[3]) === 0) {
+      this.s[0] = 1;
     }
-    this.state = [s0 & UINT64_MASK, s1 & UINT64_MASK];
 
     // Warm up to scatter initial correlation
     for (let i = 0; i < 8; i++) {
-      this.next();
+      this.next32();
     }
   }
 
-  private next64(): bigint {
-    let s1 = this.state[0];
-    const s0 = this.state[1];
+  /**
+   * Generate next 32-bit random value (xoshiro128++ algorithm)
+   */
+  private next32(): number {
+    const s = this.s;
+    const result = (rotl((s[0] + s[3]) >>> 0, 7) + s[0]) >>> 0;
 
-    this.state[0] = s0;
-    s1 ^= s1 << 23n;
-    s1 ^= s1 >> 17n;
-    s1 ^= s0;
-    s1 ^= s0 >> 26n;
-    this.state[1] = s1 & UINT64_MASK;
+    const t = (s[1] << 9) >>> 0;
 
-    return (this.state[0] + this.state[1]) & UINT64_MASK;
+    s[2] ^= s[0];
+    s[3] ^= s[1];
+    s[1] ^= s[2];
+    s[0] ^= s[3];
+
+    s[2] ^= t;
+    s[3] = rotl(s[3], 11);
+
+    return result;
   }
 
   /**
-   * Generate next random number (0 to 1)
+   * Generate next random number in [0, 1)
    */
   next(): number {
-    // Use the upper 53 bits to create a stable double in [0, 1)
-    const value = this.next64() >> 11n;
-    return Number(value) / Number(DOUBLE_DENOMINATOR);
+    // Use the full 32 bits divided by 2^32
+    return this.next32() / 0x100000000;
   }
 
   /**
@@ -101,17 +130,31 @@ export class SeededRandom {
 
   /**
    * Save internal state for exact reproduction
-   * @returns The current state
+   * @returns The current state (4 x 32-bit words)
    */
-  getState(): [bigint, bigint] {
-    return [...this.state];
+  getState(): RngState {
+    return [...this.s] as RngState;
   }
 
   /**
    * Restore saved state
-   * @param state - The state to restore
+   * @param state - The state to restore (4 x 32-bit words)
    */
-  setState(state: [bigint, bigint]): void {
-    this.state = [state[0] & UINT64_MASK, state[1] & UINT64_MASK];
+  setState(state: RngState): void {
+    this.s = [state[0] >>> 0, state[1] >>> 0, state[2] >>> 0, state[3] >>> 0];
+  }
+
+  /**
+   * @deprecated Use getState() which now returns RngState (4 numbers)
+   * Legacy compatibility: convert old bigint state format
+   */
+  setStateLegacy(state: [bigint, bigint]): void {
+    // Convert old 2x64-bit state to new 4x32-bit state
+    // This won't produce identical sequences but allows loading old saves
+    const low0 = Number(state[0] & 0xffffffffn);
+    const high0 = Number((state[0] >> 32n) & 0xffffffffn);
+    const low1 = Number(state[1] & 0xffffffffn);
+    const high1 = Number((state[1] >> 32n) & 0xffffffffn);
+    this.s = [low0 >>> 0, high0 >>> 0, low1 >>> 0, high1 >>> 0];
   }
 }

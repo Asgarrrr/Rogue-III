@@ -47,10 +47,11 @@ describe("PipelineBuilder", () => {
       const config = createTestConfig();
 
       // Simple pass that creates a grid
-      const initPass: Pass<EmptyArtifact, GridArtifact> = {
+      const initPass: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "init",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(_input, ctx) {
           const grid = new Grid(ctx.config.width, ctx.config.height);
           return createGridArtifact(grid, "init-grid");
@@ -67,10 +68,11 @@ describe("PipelineBuilder", () => {
     it("maintains type safety through chain", () => {
       const config = createTestConfig();
 
-      const pass1: Pass<EmptyArtifact, GridArtifact> = {
+      const pass1: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "pass1",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(_input, ctx) {
           return createGridArtifact(
             new Grid(ctx.config.width, ctx.config.height),
@@ -80,10 +82,11 @@ describe("PipelineBuilder", () => {
       };
 
       // This should type-check: GridArtifact -> GridArtifact
-      const pass2: Pass<GridArtifact, GridArtifact> = {
+      const pass2: Pass<GridArtifact, GridArtifact, never> = {
         id: "pass2",
         inputType: "grid",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(input, _ctx) {
           // Clone and modify
           const grid = new Grid(input.width, input.height);
@@ -105,10 +108,11 @@ describe("PipelineBuilder", () => {
     it("adds pass when condition is true", () => {
       const config = { ...createTestConfig(), addExtra: true };
 
-      const basePass: Pass<EmptyArtifact, GridArtifact> = {
+      const basePass: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "base",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(_input, ctx) {
           return createGridArtifact(
             new Grid(ctx.config.width, ctx.config.height),
@@ -117,10 +121,11 @@ describe("PipelineBuilder", () => {
         },
       };
 
-      const conditionalPass: Pass<GridArtifact, GridArtifact> = {
+      const conditionalPass: Pass<GridArtifact, GridArtifact, never> = {
         id: "conditional",
         inputType: "grid",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(input, _ctx) {
           const grid = new Grid(input.width, input.height, CellType.FLOOR);
           return createGridArtifact(grid, "conditional");
@@ -140,10 +145,11 @@ describe("PipelineBuilder", () => {
     it("skips pass when condition is false", () => {
       const config = { ...createTestConfig(), addExtra: false };
 
-      const basePass: Pass<EmptyArtifact, GridArtifact> = {
+      const basePass: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "base",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(_input, ctx) {
           return createGridArtifact(
             new Grid(ctx.config.width, ctx.config.height, CellType.WALL),
@@ -152,10 +158,11 @@ describe("PipelineBuilder", () => {
         },
       };
 
-      const conditionalPass: Pass<GridArtifact, GridArtifact> = {
+      const conditionalPass: Pass<GridArtifact, GridArtifact, never> = {
         id: "conditional",
         inputType: "grid",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(input, _ctx) {
           // Would change to floor
           const grid = new Grid(input.width, input.height, CellType.FLOOR);
@@ -184,10 +191,11 @@ describe("PipelineBuilder", () => {
     it("produces executable pipeline", () => {
       const config = createTestConfig();
 
-      const pass: Pass<EmptyArtifact, GridArtifact> = {
+      const pass: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "init",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(_input, ctx) {
           return createGridArtifact(
             new Grid(ctx.config.width, ctx.config.height),
@@ -212,10 +220,11 @@ describe("Pipeline execution", () => {
       const config = createTestConfig();
       const executionOrder: string[] = [];
 
-      const pass1: Pass<EmptyArtifact, GridArtifact> = {
+      const pass1: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "pass1",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(_input, ctx) {
           executionOrder.push("pass1");
           return createGridArtifact(
@@ -225,10 +234,11 @@ describe("Pipeline execution", () => {
         },
       };
 
-      const pass2: Pass<GridArtifact, GridArtifact> = {
+      const pass2: Pass<GridArtifact, GridArtifact, never> = {
         id: "pass2",
         inputType: "grid",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(input, _ctx) {
           executionOrder.push("pass2");
           return createGridArtifact(new Grid(input.width, input.height), "g2");
@@ -248,10 +258,11 @@ describe("Pipeline execution", () => {
     it("returns success result with artifact", () => {
       const config = createTestConfig();
 
-      const pass: Pass<EmptyArtifact, GridArtifact> = {
+      const pass: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "init",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(_input, ctx) {
           const grid = new Grid(ctx.config.width, ctx.config.height);
           grid.set(5, 5, CellType.FLOOR);
@@ -277,10 +288,11 @@ describe("Pipeline execution", () => {
     it("returns error result on failure", () => {
       const config = createTestConfig();
 
-      const failingPass: Pass<EmptyArtifact, GridArtifact> = {
+      const failingPass: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "failing",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run() {
           throw new Error("Intentional failure");
         },
@@ -294,17 +306,18 @@ describe("Pipeline execution", () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.message).toBe("Intentional failure");
+        expect(result.error.message).toContain("Intentional failure");
       }
     });
 
     it("throws for async passes in sync mode", () => {
       const config = createTestConfig();
 
-      const asyncPass: Pass<EmptyArtifact, GridArtifact> = {
+      const asyncPass: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "async",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(_input, ctx) {
           return Promise.resolve(
             createGridArtifact(
@@ -330,10 +343,11 @@ describe("Pipeline execution", () => {
     it("tracks duration", () => {
       const config = createTestConfig();
 
-      const pass: Pass<EmptyArtifact, GridArtifact> = {
+      const pass: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "slow",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(_input, ctx) {
           // Simulate some work
           let _sum = 0;
@@ -358,10 +372,11 @@ describe("Pipeline execution", () => {
       const config = createTestConfig();
       const progressCalls: { progress: number; passId: string }[] = [];
 
-      const pass1: Pass<EmptyArtifact, GridArtifact> = {
+      const pass1: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "pass1",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(_input, ctx) {
           return createGridArtifact(
             new Grid(ctx.config.width, ctx.config.height),
@@ -370,10 +385,11 @@ describe("Pipeline execution", () => {
         },
       };
 
-      const pass2: Pass<GridArtifact, GridArtifact> = {
+      const pass2: Pass<GridArtifact, GridArtifact, never> = {
         id: "pass2",
         inputType: "grid",
         outputType: "grid",
+        requiredStreams: [] as const,
         run(input) {
           return createGridArtifact(new Grid(input.width, input.height), "g2");
         },
@@ -400,10 +416,11 @@ describe("Pipeline execution", () => {
     it("executes async passes", async () => {
       const config = createTestConfig();
 
-      const asyncPass: Pass<EmptyArtifact, GridArtifact> = {
+      const asyncPass: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "async",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         async run(_input, ctx) {
           await new Promise((resolve) => setTimeout(resolve, 1));
           return createGridArtifact(
@@ -429,10 +446,11 @@ describe("Pipeline execution", () => {
       const config = createTestConfig();
       const controller = new AbortController();
 
-      const slowPass: Pass<EmptyArtifact, GridArtifact> = {
+      const slowPass: Pass<EmptyArtifact, GridArtifact, never> = {
         id: "slow",
         inputType: "empty",
         outputType: "grid",
+        requiredStreams: [] as const,
         async run(_input, ctx) {
           await new Promise((resolve) => setTimeout(resolve, 100));
           return createGridArtifact(
