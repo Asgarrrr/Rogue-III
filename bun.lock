@@ -87,17 +87,6 @@
     },
     "packages/procgen": {
       "name": "@rogue/procgen",
-      "version": "0.1.0",
-      "dependencies": {
-        "@rogue/contracts": "workspace:*",
-      },
-      "devDependencies": {
-        "@rogue/typescript-config": "workspace:*",
-        "bun-types": "latest",
-      },
-    },
-    "packages/procgen-v2": {
-      "name": "@rogue/procgen-v2",
       "version": "2.0.0",
       "dependencies": {
         "@rogue/contracts": "workspace:*",
@@ -247,8 +236,6 @@
     "@rogue/game": ["@rogue/game@workspace:packages/game"],
 
     "@rogue/procgen": ["@rogue/procgen@workspace:packages/procgen"],
-
-    "@rogue/procgen-v2": ["@rogue/procgen-v2@workspace:packages/procgen-v2"],
 
     "@rogue/server": ["@rogue/server@workspace:apps/server"],
 

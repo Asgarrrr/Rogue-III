@@ -5,6 +5,7 @@
  * Uses the composable pass system with PipelineBuilder.
  */
 
+import { finalizeDungeon } from "../../passes/common";
 import { PipelineBuilder } from "../../pipeline/builder";
 import type {
   DungeonArtifact,
@@ -18,11 +19,10 @@ import type {
 import { DEFAULT_CELLULAR_CONFIG } from "../../pipeline/types";
 import {
   applyCellularRules,
-  calculateSpawns,
   connectRegions,
-  finalizeDungeon,
   initializeRandom,
   keepLargestRegion,
+  placeEntranceExit,
 } from "./passes";
 
 /**
@@ -131,7 +131,7 @@ export class CellularGenerator implements Generator {
       type: "validation",
       id: "config-validation",
       violations,
-      passed: violations.every((v) => v.severity !== "error"),
+      success: violations.every((v) => v.severity !== "error"),
     };
   }
 
@@ -150,8 +150,8 @@ export class CellularGenerator implements Generator {
       .pipe(applyCellularRules())
       .pipe(keepLargestRegion())
       .pipe(connectRegions())
-      .pipe(calculateSpawns())
-      .pipe(finalizeDungeon())
+      .pipe(placeEntranceExit())
+      .pipe(finalizeDungeon("cellular"))
       .build();
 
     return pipeline;

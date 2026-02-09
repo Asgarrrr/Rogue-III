@@ -9,13 +9,26 @@ import {
   type Dimensions,
   type Point,
 } from "../geometry/types";
-import { CellType } from "./types";
+import { CellType, type MutableGrid } from "./types";
+
+declare const process: { env: { NODE_ENV?: string } };
+const DEV_MODE = process.env.NODE_ENV !== "production";
 
 /**
  * 2D grid with efficient cell access and neighbor operations.
  * Optimized for cellular automata and spatial algorithms.
+ *
+ * Implements both ReadonlyGrid and MutableGrid interfaces.
+ *
+ * @remarks
+ * This class is internally mutable - cells can be modified via `set()`,
+ * `fillRect()`, etc. When used in artifacts, the `readonly grid: Grid`
+ * field prevents reassigning the reference but allows cell mutation.
+ * This is intentional for performance (avoids copying large grids).
+ *
+ * For read-only contexts, use the `ReadonlyGrid` type instead.
  */
-export class Grid {
+export class Grid implements MutableGrid {
   readonly width: number;
   readonly height: number;
   private readonly data: Uint8Array;
@@ -25,6 +38,10 @@ export class Grid {
     height: number,
     initialValue: CellType = CellType.FLOOR,
   ) {
+    if (width <= 0 || height <= 0) {
+      throw new Error(`Invalid grid dimensions: ${width}x${height}`);
+    }
+
     this.width = width;
     this.height = height;
     this.data = new Uint8Array(width * height);
@@ -56,6 +73,25 @@ export class Grid {
    */
   static floors(width: number, height: number): Grid {
     return new Grid(width, height, CellType.FLOOR);
+  }
+
+  /**
+   * Create a wall-initialized grid and copy terrain bytes into it.
+   *
+   * If terrain is shorter than expected, remaining cells stay as WALL.
+   * If terrain is longer than expected, extra data is ignored.
+   */
+  static fromTerrain(
+    width: number,
+    height: number,
+    terrain: Uint8Array,
+  ): Grid {
+    const grid = new Grid(width, height, CellType.WALL);
+    const data = grid._unsafeGetInternalData();
+    const expectedLength = width * height;
+    const copyLength = Math.min(expectedLength, terrain.length);
+    data.set(terrain.subarray(0, copyLength), 0);
+    return grid;
   }
 
   // ===========================================================================
@@ -99,16 +135,30 @@ export class Grid {
    * Set cell value with bounds checking
    */
   set(x: number, y: number, value: CellType): void {
-    if (this.isInBounds(x, y)) {
-      this.data[y * this.width + x] = value;
+    if (!this.isInBounds(x, y)) {
+      if (DEV_MODE) {
+        console.warn(
+          `Grid.set: out of bounds (${x}, ${y}) for grid ${this.width}x${this.height}`,
+        );
+      }
+      return;
     }
+    this.data[y * this.width + x] = value;
   }
 
   /**
    * Set cell at point
    */
   setAt(p: Point, value: CellType): void {
-    this.set(p.x, p.y, value);
+    if (!this.isInBounds(p.x, p.y)) {
+      if (DEV_MODE) {
+        console.warn(
+          `Grid.setAt: out of bounds (${p.x}, ${p.y}) for grid ${this.width}x${this.height}`,
+        );
+      }
+      return;
+    }
+    this.data[p.y * this.width + p.x] = value;
   }
 
   /**
@@ -228,6 +278,48 @@ export class Grid {
     return neighbors;
   }
 
+  /**
+   * Iterate over 4-directional neighbors without allocation.
+   * @param x - Center x coordinate
+   * @param y - Center y coordinate
+   * @param callback - Called for each valid neighbor with (nx, ny, cellType)
+   */
+  forEachNeighbor4(
+    x: number,
+    y: number,
+    callback: (nx: number, ny: number, cell: CellType) => void,
+  ): void {
+    if (x > 0) callback(x - 1, y, this.getUnsafe(x - 1, y));
+    if (x < this.width - 1) callback(x + 1, y, this.getUnsafe(x + 1, y));
+    if (y > 0) callback(x, y - 1, this.getUnsafe(x, y - 1));
+    if (y < this.height - 1) callback(x, y + 1, this.getUnsafe(x, y + 1));
+  }
+
+  /**
+   * Iterate over 8-directional neighbors without allocation.
+   * @param x - Center x coordinate
+   * @param y - Center y coordinate
+   * @param callback - Called for each valid neighbor with (nx, ny, cellType)
+   */
+  forEachNeighbor8(
+    x: number,
+    y: number,
+    callback: (nx: number, ny: number, cell: CellType) => void,
+  ): void {
+    const minX = Math.max(0, x - 1);
+    const maxX = Math.min(this.width - 1, x + 1);
+    const minY = Math.max(0, y - 1);
+    const maxY = Math.min(this.height - 1, y + 1);
+
+    for (let ny = minY; ny <= maxY; ny++) {
+      for (let nx = minX; nx <= maxX; nx++) {
+        if (nx !== x || ny !== y) {
+          callback(nx, ny, this.getUnsafe(nx, ny));
+        }
+      }
+    }
+  }
+
   // ===========================================================================
   // REGION OPERATIONS
   // ===========================================================================
@@ -317,6 +409,9 @@ export class Grid {
 
   /**
    * Apply cellular automata into an existing destination grid (no allocation)
+   *
+   * Optimization: Skip border cells (always walls per INVARIANTS.md) and
+   * remove bounds checks for interior cells where all 8 neighbors are guaranteed in-bounds.
    */
   applyCellularAutomataInto(
     survivalMin: number,
@@ -328,45 +423,30 @@ export class Grid {
     const width = this.width;
     const height = this.height;
 
-    for (let y = 0; y < height; y++) {
+    // Process interior cells only (skip borders)
+    // Interior cells have all 8 neighbors guaranteed in-bounds, no bounds checks needed
+    for (let y = 1; y < height - 1; y++) {
       const yOff = y * width;
-      for (let x = 0; x < width; x++) {
-        // Manual 8-neighbor count with bounds checks
+      const yOffM1 = (y - 1) * width;
+      const yOffP1 = (y + 1) * width;
+
+      for (let x = 1; x < width - 1; x++) {
+        // Direct neighbor count without bounds checks
         let neighbors = 0;
-        const xm1 = x - 1;
-        const xp1 = x + 1;
-        const ym1 = y - 1;
-        const yp1 = y + 1;
 
-        // Row y-1
-        if (ym1 >= 0) {
-          const yOffM1 = ym1 * width;
-          if (xm1 >= 0 && srcData[yOffM1 + xm1] === CellType.WALL) neighbors++;
-          if (srcData[yOffM1 + x] === CellType.WALL) neighbors++;
-          if (xp1 < width && srcData[yOffM1 + xp1] === CellType.WALL)
-            neighbors++;
-        } else {
-          neighbors += 3; // Out of bounds = walls
-        }
+        // Row y-1 (above)
+        if (srcData[yOffM1 + x - 1] === CellType.WALL) neighbors++;
+        if (srcData[yOffM1 + x] === CellType.WALL) neighbors++;
+        if (srcData[yOffM1 + x + 1] === CellType.WALL) neighbors++;
 
-        // Row y
-        if (xm1 >= 0) {
-          if (srcData[yOff + xm1] === CellType.WALL) neighbors++;
-        } else neighbors++;
-        if (xp1 < width) {
-          if (srcData[yOff + xp1] === CellType.WALL) neighbors++;
-        } else neighbors++;
+        // Row y (same row, left and right)
+        if (srcData[yOff + x - 1] === CellType.WALL) neighbors++;
+        if (srcData[yOff + x + 1] === CellType.WALL) neighbors++;
 
-        // Row y+1
-        if (yp1 < height) {
-          const yOffP1 = yp1 * width;
-          if (xm1 >= 0 && srcData[yOffP1 + xm1] === CellType.WALL) neighbors++;
-          if (srcData[yOffP1 + x] === CellType.WALL) neighbors++;
-          if (xp1 < width && srcData[yOffP1 + xp1] === CellType.WALL)
-            neighbors++;
-        } else {
-          neighbors += 3;
-        }
+        // Row y+1 (below)
+        if (srcData[yOffP1 + x - 1] === CellType.WALL) neighbors++;
+        if (srcData[yOffP1 + x] === CellType.WALL) neighbors++;
+        if (srcData[yOffP1 + x + 1] === CellType.WALL) neighbors++;
 
         const current = srcData[yOff + x] as CellType;
         dstData[yOff + x] =
@@ -378,6 +458,18 @@ export class Grid {
               ? CellType.WALL
               : CellType.FLOOR;
       }
+    }
+
+    // Ensure borders remain walls (INVARIANTS.md: "Border: Edge cells remain WALL")
+    // Top and bottom rows
+    for (let x = 0; x < width; x++) {
+      dstData[x] = CellType.WALL;
+      dstData[(height - 1) * width + x] = CellType.WALL;
+    }
+    // Left and right columns (excluding corners already set)
+    for (let y = 1; y < height - 1; y++) {
+      dstData[y * width] = CellType.WALL;
+      dstData[y * width + width - 1] = CellType.WALL;
     }
 
     return dst;
@@ -448,5 +540,67 @@ export class Grid {
       if (this.data[i] === cellType) count++;
     }
     return count;
+  }
+
+  /**
+   * Find all coordinates containing the specified cell type.
+   * @param cellType - The cell type to search for
+   * @returns Array of points containing that cell type
+   */
+  findAll(cellType: CellType): Point[] {
+    const points: Point[] = [];
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        if (this.get(x, y) === cellType) {
+          points.push({ x, y });
+        }
+      }
+    }
+    return points;
+  }
+
+  /**
+   * Check if this grid equals another grid.
+   * @param other - The grid to compare with
+   * @returns True if grids have same dimensions and cell values
+   */
+  equals(other: Grid): boolean {
+    if (this.width !== other.width || this.height !== other.height) {
+      return false;
+    }
+    for (let i = 0; i < this.data.length; i++) {
+      if (this.data[i] !== other.data[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Get all cell values in a row.
+   * @param y - The row index
+   * @returns Array of cell types in that row, or empty if out of bounds
+   */
+  getRow(y: number): CellType[] {
+    if (y < 0 || y >= this.height) return [];
+    const row: CellType[] = [];
+    for (let x = 0; x < this.width; x++) {
+      row.push(this.data[y * this.width + x] as CellType);
+    }
+    return row;
+  }
+
+  /**
+   * Get all cell values in a column.
+   * @param x - The column index
+   * @returns Array of cell types in that column, or empty if out of bounds
+   */
+  getColumn(x: number): CellType[] {
+    if (x < 0 || x >= this.width) return [];
+    const col: CellType[] = [];
+    for (let y = 0; y < this.height; y++) {
+      col.push(this.data[y * this.width + x] as CellType);
+    }
+    return col;
   }
 }

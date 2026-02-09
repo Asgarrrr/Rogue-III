@@ -29,6 +29,24 @@ export {
   T_SHAPE_LARGE,
   T_SHAPE_VARIANTS,
 } from "./shapes";
+// Signature Rooms (structural templates)
+export {
+  ALCOVED_SYMMETRIC,
+  CIRCULAR_MEDIUM,
+  COLUMNED_HALL,
+  CROSS_ALCOVED,
+  DUAL_PIT,
+  GRAND_PILLARED,
+  getSignaturePrefab,
+  getSignaturePrefabsByTag,
+  getSignaturePrefabsForType,
+  JUNCTION_CROSS,
+  L_SHAPED,
+  OCTAGONAL_LARGE,
+  ORGANIC_BLOB,
+  SIGNATURE_PREFABS,
+  SIGNATURE_PREFABS_MAP,
+} from "./signature-rooms";
 // Utilities
 export {
   createTemplate,
@@ -52,22 +70,3 @@ export type {
   TemplateVariant,
 } from "./types";
 export { DEFAULT_TEMPLATE_SELECTION } from "./types";
-
-// Signature Rooms (Boss Arena, Treasure Vault, etc.)
-export {
-  BOSS_ARENA,
-  CAVERN,
-  CROSSROADS,
-  CRYPT,
-  ENTRANCE_HALL,
-  FORGE,
-  getSignaturePrefab,
-  getSignaturePrefabsByTag,
-  getSignaturePrefabsForType,
-  LIBRARY,
-  SHRINE,
-  SIGNATURE_PREFABS,
-  SIGNATURE_PREFABS_MAP,
-  THRONE_ROOM,
-  TREASURE_VAULT,
-} from "./signature-rooms";

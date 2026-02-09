@@ -14,6 +14,7 @@ import {
   isValidEncodedSeed,
   pathToSeed,
   randomEncodedSeed,
+  SeededRandom,
   seedsAreEquivalent,
   seedToPath,
 } from "../src";
@@ -101,8 +102,9 @@ describe("roundtrip encoding", () => {
   }
 
   it("roundtrips 100 random seeds", () => {
+    const rng = new SeededRandom(0x12345678);
     for (let i = 0; i < 100; i++) {
-      const seedValue = Math.floor(Math.random() * 0xffffffff);
+      const seedValue = Math.floor(rng.next() * 0x100000000) >>> 0;
       const original = createSeed(seedValue);
       const encoded = encodeSeed(original);
       const decoded = decodeSeed(encoded);
@@ -129,9 +131,9 @@ describe("isValidEncodedSeed", () => {
   });
 
   it("returns false for non-strings", () => {
-    expect(isValidEncodedSeed(null as any)).toBe(false);
-    expect(isValidEncodedSeed(undefined as any)).toBe(false);
-    expect(isValidEncodedSeed(12345 as any)).toBe(false);
+    expect(isValidEncodedSeed(null)).toBe(false);
+    expect(isValidEncodedSeed(undefined)).toBe(false);
+    expect(isValidEncodedSeed(12345)).toBe(false);
   });
 });
 

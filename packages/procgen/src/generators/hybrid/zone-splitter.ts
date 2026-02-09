@@ -142,37 +142,73 @@ function recursiveSplit(
   const variance = 0.3; // Allow 30% variance from center
   const baseRatio = 0.5 + (rng.next() - 0.5) * variance;
 
-  let leftCount: number;
-  let rightCount: number;
-  let leftBounds: ZoneBounds;
-  let rightBounds: ZoneBounds;
-
-  if (actualDirection === "horizontal") {
-    const splitY = Math.floor(bounds.y + bounds.height * baseRatio);
-    const topHeight = splitY - bounds.y;
-    const bottomHeight = bounds.height - topHeight;
-
-    leftBounds = { x: bounds.x, y: bounds.y, width: bounds.width, height: topHeight };
-    rightBounds = { x: bounds.x, y: splitY, width: bounds.width, height: bottomHeight };
-  } else {
-    const splitX = Math.floor(bounds.x + bounds.width * baseRatio);
-    const leftWidth = splitX - bounds.x;
-    const rightWidth = bounds.width - leftWidth;
-
-    leftBounds = { x: bounds.x, y: bounds.y, width: leftWidth, height: bounds.height };
-    rightBounds = { x: splitX, y: bounds.y, width: rightWidth, height: bounds.height };
-  }
+  // Calculate bounds based on split direction
+  const [leftBounds, rightBounds]: [ZoneBounds, ZoneBounds] =
+    actualDirection === "horizontal"
+      ? (() => {
+          const splitY = Math.floor(bounds.y + bounds.height * baseRatio);
+          const topHeight = splitY - bounds.y;
+          const bottomHeight = bounds.height - topHeight;
+          return [
+            {
+              x: bounds.x,
+              y: bounds.y,
+              width: bounds.width,
+              height: topHeight,
+            },
+            {
+              x: bounds.x,
+              y: splitY,
+              width: bounds.width,
+              height: bottomHeight,
+            },
+          ];
+        })()
+      : (() => {
+          const splitX = Math.floor(bounds.x + bounds.width * baseRatio);
+          const leftWidth = splitX - bounds.x;
+          const rightWidth = bounds.width - leftWidth;
+          return [
+            {
+              x: bounds.x,
+              y: bounds.y,
+              width: leftWidth,
+              height: bounds.height,
+            },
+            {
+              x: splitX,
+              y: bounds.y,
+              width: rightWidth,
+              height: bounds.height,
+            },
+          ];
+        })();
 
   // Distribute remaining zones between left and right
-  leftCount = Math.ceil(targetCount / 2);
-  rightCount = targetCount - leftCount;
+  const leftCount = Math.ceil(targetCount / 2);
+  const rightCount = targetCount - leftCount;
 
   // Alternate direction for children
-  const nextDirection = actualDirection === "horizontal" ? "vertical" : "horizontal";
+  const nextDirection =
+    actualDirection === "horizontal" ? "vertical" : "horizontal";
 
   // Recursively split both halves
-  const leftZones = recursiveSplit(leftBounds, leftCount, nextDirection, config, rng, depth + 1);
-  const rightZones = recursiveSplit(rightBounds, rightCount, nextDirection, config, rng, depth + 1);
+  const leftZones = recursiveSplit(
+    leftBounds,
+    leftCount,
+    nextDirection,
+    config,
+    rng,
+    depth + 1,
+  );
+  const rightZones = recursiveSplit(
+    rightBounds,
+    rightCount,
+    nextDirection,
+    config,
+    rng,
+    depth + 1,
+  );
 
   return [...leftZones, ...rightZones];
 }
@@ -202,7 +238,9 @@ function createTransition(
     );
 
     if (overlapEnd - overlapStart >= width) {
-      const y = overlapStart + Math.floor(rng.next() * (overlapEnd - overlapStart - width));
+      const y =
+        overlapStart +
+        Math.floor(rng.next() * (overlapEnd - overlapStart - width));
 
       const isALeft = boundsA.x + boundsA.width === boundsB.x;
       const fromX = isALeft ? boundsA.x + boundsA.width - 1 : boundsA.x;
@@ -231,7 +269,9 @@ function createTransition(
     );
 
     if (overlapEnd - overlapStart >= width) {
-      const x = overlapStart + Math.floor(rng.next() * (overlapEnd - overlapStart - width));
+      const x =
+        overlapStart +
+        Math.floor(rng.next() * (overlapEnd - overlapStart - width));
 
       const isATop = boundsA.y + boundsA.height === boundsB.y;
       const fromY = isATop ? boundsA.y + boundsA.height - 1 : boundsA.y;
@@ -267,14 +307,17 @@ function shuffleArray<T>(array: T[], rng: SeededRandom): T[] {
 /**
  * Get algorithm for a zone type
  */
-export function getAlgorithmForZoneType(type: ZoneType): GenerationAlgorithm {
+export function getAlgorithmForZoneType(
+  type: ZoneType,
+  rng: SeededRandom,
+): GenerationAlgorithm {
   switch (type) {
     case "natural":
       return "cellular";
     case "constructed":
       return "bsp";
     case "mixed":
-      return Math.random() > 0.5 ? "bsp" : "cellular";
+      return rng.next() > 0.5 ? "bsp" : "cellular";
   }
 }
 

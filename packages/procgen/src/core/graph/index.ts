@@ -5,5 +5,5 @@
  * adjacency building, and connectivity analysis.
  */
 
-export * from "./bfs-distance";
 export * from "./adjacency";
+export * from "./bfs-distance";

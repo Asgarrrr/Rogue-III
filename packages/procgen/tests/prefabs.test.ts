@@ -67,13 +67,13 @@ describe("createTemplate", () => {
       ],
       {
         minLeafSize: 10,
-        compatibleTypes: ["boss", "treasure"],
+        compatibleTypes: ["normal", "cavern"],
         tags: ["test", "asymmetric"],
       },
     );
 
     expect(template.minLeafSize).toBe(10);
-    expect(template.compatibleTypes).toEqual(["boss", "treasure"]);
+    expect(template.compatibleTypes).toEqual(["normal", "cavern"]);
     expect(template.tags).toEqual(["test", "asymmetric"]);
   });
 
@@ -704,14 +704,14 @@ describe("selectTemplateForLeaf", () => {
     { minLeafSize: 20 },
   );
 
-  const bossTemplate = createTemplate(
-    "boss-room",
+  const cavernOnlyTemplate = createTemplate(
+    "cavern-only",
     "custom",
     [
       [1, 1, 1],
       [1, 1, 1],
     ],
-    { compatibleTypes: ["boss"] },
+    { compatibleTypes: ["cavern"] },
   );
 
   const taggedTemplate = createTemplate(
@@ -794,7 +794,7 @@ describe("selectTemplateForLeaf", () => {
   });
 
   it("filters by room type compatibility", () => {
-    const templates = [bossTemplate, simpleTemplate];
+    const templates = [cavernOnlyTemplate, simpleTemplate];
     const rng = () => 0.1;
 
     const result = selectTemplateForLeaf(templates, 10, 10, rng, {
@@ -808,16 +808,16 @@ describe("selectTemplateForLeaf", () => {
   });
 
   it("selects compatible room type", () => {
-    const templates = [bossTemplate];
+    const templates = [cavernOnlyTemplate];
     const rng = () => 0.1;
 
     const result = selectTemplateForLeaf(templates, 10, 10, rng, {
       templateChance: 1.0,
       minLeafSize: 8,
-      roomType: "boss",
+      roomType: "cavern",
     });
 
-    expect(result).toBe(bossTemplate);
+    expect(result).toBe(cavernOnlyTemplate);
   });
 
   it("filters by required tags", () => {
@@ -880,7 +880,7 @@ describe("selectTemplateForLeaf", () => {
     expect(result).toBe(simpleTemplate);
   });
 
-  it("randomly selects from multiple fitting templates", () => {
+  it("randomly selects from multiple fitting templates using reservoir sampling", () => {
     const template1 = createTemplate("t1", "custom", [
       [1, 1],
       [1, 1],
@@ -891,11 +891,16 @@ describe("selectTemplateForLeaf", () => {
     ]);
     const templates = [template1, template2];
 
-    // RNG that passes chance check, then selects index 1
+    // Reservoir sampling uses RNG differently:
+    // - Call 1: chance check (must be <= templateChance to proceed)
+    // - Call 2: for template1, check if rng() <= 1/1 (always true for valid RNG)
+    // - Call 3: for template2, check if rng() <= 1/2 = 0.5
     let callCount = 0;
     const rng = () => {
       callCount++;
-      return callCount === 1 ? 0.1 : 0.6; // First call passes chance, second selects index
+      if (callCount === 1) return 0.1; // Pass chance check
+      if (callCount === 2) return 0.9; // Select template1 (0.9 <= 1.0)
+      return 0.3; // Replace with template2 (0.3 <= 0.5)
     };
 
     const result = selectTemplateForLeaf(templates, 10, 10, rng, {
@@ -903,7 +908,7 @@ describe("selectTemplateForLeaf", () => {
       minLeafSize: 8,
     });
 
-    // Should select template at index floor(0.6 * 2) = 1
+    // With reservoir sampling, template2 is selected because 0.3 <= 0.5
     expect(result).toBe(template2);
   });
 });

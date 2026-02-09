@@ -18,8 +18,14 @@ import type {
  * Decision system list for iteration.
  */
 const DECISION_SYSTEMS: DecisionSystem[] = [
-  "layout", "rooms", "connectivity", "spawns",
-  "grammar", "constraints", "simulation", "semantic",
+  "layout",
+  "rooms",
+  "connectivity",
+  "spawns",
+  "grammar",
+  "constraints",
+  "simulation",
+  "semantic",
 ];
 
 /**
@@ -103,21 +109,20 @@ export class DefaultTraceCollector implements TraceCollector {
     return this.events;
   }
 
-  getDecisionsBySystem(system: DecisionSystem): readonly StructuredDecisionEvent[] {
-    return this.structuredDecisions.filter(e => e.data.system === system);
+  getDecisionsBySystem(
+    system: DecisionSystem,
+  ): readonly StructuredDecisionEvent[] {
+    return this.structuredDecisions.filter((e) => e.data.system === system);
   }
 
   getDecisionStats(): DecisionStats {
-    const bySystem: Record<DecisionSystem, number> = {} as Record<DecisionSystem, number>;
-    const byConfidence: Record<DecisionConfidence, number> = {} as Record<DecisionConfidence, number>;
-
-    // Initialize counters
-    for (const sys of DECISION_SYSTEMS) {
-      bySystem[sys] = 0;
-    }
-    for (const conf of CONFIDENCE_LEVELS) {
-      byConfidence[conf] = 0;
-    }
+    // Initialize counters with all keys set to 0
+    const bySystem = Object.fromEntries(
+      DECISION_SYSTEMS.map((sys) => [sys, 0]),
+    ) as Record<DecisionSystem, number>;
+    const byConfidence = Object.fromEntries(
+      CONFIDENCE_LEVELS.map((conf) => [conf, 0]),
+    ) as Record<DecisionConfidence, number>;
 
     let totalRngConsumed = 0;
 
@@ -134,7 +139,8 @@ export class DefaultTraceCollector implements TraceCollector {
       bySystem,
       byConfidence,
       totalRngConsumed,
-      avgRngPerDecision: totalDecisions > 0 ? totalRngConsumed / totalDecisions : 0,
+      avgRngPerDecision:
+        totalDecisions > 0 ? totalRngConsumed / totalDecisions : 0,
     };
   }
 
@@ -150,8 +156,14 @@ export class DefaultTraceCollector implements TraceCollector {
 const EMPTY_DECISION_STATS: DecisionStats = {
   totalDecisions: 0,
   bySystem: {
-    layout: 0, rooms: 0, connectivity: 0, spawns: 0,
-    grammar: 0, constraints: 0, simulation: 0, semantic: 0,
+    layout: 0,
+    rooms: 0,
+    connectivity: 0,
+    spawns: 0,
+    grammar: 0,
+    constraints: 0,
+    simulation: 0,
+    semantic: 0,
   },
   byConfidence: { high: 0, medium: 0, low: 0 },
   totalRngConsumed: 0,
@@ -179,7 +191,9 @@ export class NoOpTraceCollector implements TraceCollector {
   getEvents(): readonly TraceEvent[] {
     return [];
   }
-  getDecisionsBySystem(_system: DecisionSystem): readonly StructuredDecisionEvent[] {
+  getDecisionsBySystem(
+    _system: DecisionSystem,
+  ): readonly StructuredDecisionEvent[] {
     return [];
   }
   getDecisionStats(): DecisionStats {

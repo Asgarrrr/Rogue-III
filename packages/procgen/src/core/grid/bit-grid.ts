@@ -5,6 +5,79 @@
 
 import type { Dimensions, Point } from "../geometry/types";
 
+declare const process: { env: { NODE_ENV?: string } };
+const DEV_MODE = process.env.NODE_ENV !== "production";
+
+// ============================================================================
+// BitGrid Pool - Reuses BitGrid instances to reduce allocation pressure
+// ============================================================================
+
+/**
+ * Pool of BitGrid instances for reuse.
+ * Reduces GC pressure by reusing BitGrids instead of allocating new ones.
+ *
+ * Thread-safety: This pool is designed for single-threaded use (JS main thread).
+ * Determinism: Pool usage order does not affect RNG or generation output.
+ */
+class BitGridPoolImpl {
+  private readonly pool: BitGrid[] = [];
+  private readonly maxSize: number;
+
+  constructor(maxSize = 8) {
+    this.maxSize = maxSize;
+  }
+
+  /**
+   * Acquire a BitGrid of the specified dimensions.
+   * Returns a pooled instance if available (cleared), or creates a new one.
+   */
+  acquire(width: number, height: number): BitGrid {
+    // Look for a compatible grid in the pool
+    for (let i = 0; i < this.pool.length; i++) {
+      const grid = this.pool[i]!;
+      if (grid.width === width && grid.height === height) {
+        // Remove from pool and clear
+        this.pool.splice(i, 1);
+        grid.clear();
+        return grid;
+      }
+    }
+    // No compatible grid found, create new
+    return new BitGrid(width, height);
+  }
+
+  /**
+   * Release a BitGrid back to the pool for reuse.
+   * If the pool is full, the grid is discarded (GC'd).
+   */
+  release(grid: BitGrid): void {
+    if (this.pool.length < this.maxSize) {
+      this.pool.push(grid);
+    }
+    // Otherwise let it be garbage collected
+  }
+
+  /**
+   * Clear all pooled instances (useful for testing or memory pressure).
+   */
+  clear(): void {
+    this.pool.length = 0;
+  }
+
+  /**
+   * Get current pool size (for debugging/testing).
+   */
+  get size(): number {
+    return this.pool.length;
+  }
+}
+
+/**
+ * Global BitGrid pool instance.
+ * Use `BitGridPool.acquire()` and `BitGridPool.release()` for pooled access.
+ */
+export const BitGridPool = new BitGridPoolImpl();
+
 /**
  * Memory-efficient boolean grid using bit packing.
  * Ideal for masks, visited arrays, and other binary data.
@@ -15,6 +88,10 @@ export class BitGrid {
   private readonly data: Uint32Array;
 
   constructor(width: number, height: number) {
+    if (width <= 0 || height <= 0) {
+      throw new Error(`Invalid grid dimensions: ${width}x${height}`);
+    }
+
     this.width = width;
     this.height = height;
     // Calculate number of Uint32 elements needed (32 bits each)
@@ -61,12 +138,26 @@ export class BitGrid {
    * Set bit value at coordinates
    */
   set(x: number, y: number, value: boolean): void {
-    if (!this.isInBounds(x, y)) return;
+    if (!this.isInBounds(x, y)) {
+      if (DEV_MODE) {
+        console.warn(
+          `BitGrid.set: out of bounds (${x}, ${y}) for grid ${this.width}x${this.height}`,
+        );
+      }
+      return;
+    }
     const index = y * this.width + x;
     const arrayIndex = index >>> 5;
     const bitIndex = index & 31;
     const current = this.data[arrayIndex];
-    if (current === undefined) return;
+    if (current === undefined) {
+      if (DEV_MODE) {
+        console.warn(
+          `BitGrid.set: undefined data at array index ${arrayIndex} for coordinates (${x}, ${y})`,
+        );
+      }
+      return;
+    }
 
     if (value) {
       this.data[arrayIndex] = current | (1 << bitIndex);
@@ -86,12 +177,26 @@ export class BitGrid {
    * Toggle bit at coordinates
    */
   toggle(x: number, y: number): void {
-    if (!this.isInBounds(x, y)) return;
+    if (!this.isInBounds(x, y)) {
+      if (DEV_MODE) {
+        console.warn(
+          `BitGrid.toggle: out of bounds (${x}, ${y}) for grid ${this.width}x${this.height}`,
+        );
+      }
+      return;
+    }
     const index = y * this.width + x;
     const arrayIndex = index >>> 5;
     const bitIndex = index & 31;
     const current = this.data[arrayIndex];
-    if (current === undefined) return;
+    if (current === undefined) {
+      if (DEV_MODE) {
+        console.warn(
+          `BitGrid.toggle: undefined data at array index ${arrayIndex} for coordinates (${x}, ${y})`,
+        );
+      }
+      return;
+    }
     this.data[arrayIndex] = current ^ (1 << bitIndex);
   }
 
@@ -164,5 +269,37 @@ export class BitGrid {
    */
   _unsafeGetInternalData(): Uint32Array {
     return this.data;
+  }
+
+  /**
+   * Count the number of set (true) bits in the grid.
+   * @returns Number of cells set to true
+   */
+  countSet(): number {
+    return this.count(); // Reuse optimized bit counting
+  }
+
+  /**
+   * Count the number of clear (false) bits in the grid.
+   * @returns Number of cells set to false
+   */
+  countClear(): number {
+    return this.width * this.height - this.countSet();
+  }
+
+  /**
+   * Find all coordinates that are set (true).
+   * @returns Array of points that are set
+   */
+  findSet(): Point[] {
+    const points: Point[] = [];
+    for (let y = 0; y < this.height; y++) {
+      for (let x = 0; x < this.width; x++) {
+        if (this.get(x, y)) {
+          points.push({ x, y });
+        }
+      }
+    }
+    return points;
   }
 }

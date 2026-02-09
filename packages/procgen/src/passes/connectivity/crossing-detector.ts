@@ -9,6 +9,13 @@ import type { Point } from "../../core/geometry/types";
 import type { Connection } from "../../pipeline/types";
 
 /**
+ * Coordinate key with no width assumptions (avoids collisions on wide maps).
+ */
+function coordKey(x: number, y: number): string {
+  return `${x},${y}`;
+}
+
+/**
  * Information about a corridor crossing
  */
 export interface CorridorCrossing {
@@ -48,13 +55,16 @@ export function detectCorridorCrossings(
   const crossings: CorridorCrossing[] = [];
 
   // Build path sets for fast intersection checking
-  const pathSets = new Map<Connection, Set<string>>();
-  for (const conn of connections) {
+  const pathSets: Array<Set<string> | undefined> = new Array(connections.length);
+  for (let i = 0; i < connections.length; i++) {
+    const conn = connections[i];
+    if (!conn) continue;
+    if (!conn.path) continue; // Skip connections without path arrays
     const set = new Set<string>();
     for (const point of conn.path) {
-      set.add(`${point.x},${point.y}`);
+      set.add(coordKey(point.x, point.y));
     }
-    pathSets.set(conn, set);
+    pathSets[i] = set;
   }
 
   // Check all pairs of connections for crossings
@@ -62,7 +72,7 @@ export function detectCorridorCrossings(
     for (let j = i + 1; j < connections.length; j++) {
       const c1 = connections[i];
       const c2 = connections[j];
-      if (!c1 || !c2) continue;
+      if (!c1 || !c2 || !c1.path || !c2.path) continue;
 
       // Skip if connections share a room (they're supposed to touch)
       if (connectionsShareRoom(c1, c2)) {
@@ -70,7 +80,7 @@ export function detectCorridorCrossings(
       }
 
       // Find intersection points
-      const pathSet = pathSets.get(c1);
+      const pathSet = pathSets[i];
       if (!pathSet) continue;
       const intersections = findPathIntersections(pathSet, c2.path);
 
@@ -127,7 +137,7 @@ function findPathIntersections(
   const intersections: Point[] = [];
 
   for (const point of path) {
-    const key = `${point.x},${point.y}`;
+    const key = coordKey(point.x, point.y);
     if (pathSet.has(key)) {
       intersections.push({ x: point.x, y: point.y });
     }
@@ -217,7 +227,7 @@ export function validateProgressionIntegrity(
   exitRoomId: number,
   intendedGraph: ReadonlyMap<number, ReadonlySet<number>>,
   actualGraph: ReadonlyMap<number, ReadonlySet<number>>,
-): { valid: boolean; shortestPathReduction: number } {
+): { success: boolean; shortestPathReduction: number } {
   // Calculate shortest path in intended graph
   const intendedPath = bfsShortestPath(
     intendedGraph,
@@ -231,7 +241,7 @@ export function validateProgressionIntegrity(
   const reduction = intendedPath - actualPath;
 
   return {
-    valid: reduction <= 1, // Allow 1 step reduction as acceptable
+    success: reduction <= 1, // Allow 1 step reduction as acceptable
     shortestPathReduction: reduction,
   };
 }

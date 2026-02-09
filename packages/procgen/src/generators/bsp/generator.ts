@@ -5,6 +5,7 @@
  * Now uses the composable pass system with PipelineBuilder.
  */
 
+import { finalizeDungeon } from "../../passes/common";
 import { PipelineBuilder } from "../../pipeline/builder";
 import type {
   DungeonArtifact,
@@ -17,14 +18,13 @@ import type {
 } from "../../pipeline/types";
 import { DEFAULT_BSP_CONFIG } from "../../pipeline/types";
 import {
-  assignRoomTypes,
   buildConnectivity,
-  calculateSpawns,
   carveCorridors,
   carveRooms,
-  finalizeDungeon,
+  computeRoomMetadata,
   initializeState,
   partitionBSP,
+  placeEntranceExit,
   placeRooms,
 } from "./passes";
 
@@ -100,6 +100,19 @@ export class BSPGenerator implements Generator {
       });
     }
 
+    if (
+      bsp.corridorStyle !== undefined &&
+      bsp.corridorStyle !== "l-shaped" &&
+      bsp.corridorStyle !== "bresenham" &&
+      bsp.corridorStyle !== "astar"
+    ) {
+      violations.push({
+        type: "config.bsp.corridorStyle",
+        message: "corridorStyle must be one of: l-shaped, bresenham, astar",
+        severity: "error",
+      });
+    }
+
     // Check if dimensions are too small for the room size
     const minLeafSize = bsp.minRoomSize * 2 + bsp.roomPadding * 2;
     if (config.width < minLeafSize || config.height < minLeafSize) {
@@ -114,7 +127,7 @@ export class BSPGenerator implements Generator {
       type: "validation",
       id: "config-validation",
       violations,
-      passed: violations.every((v) => v.severity !== "error"),
+      success: violations.every((v) => v.severity !== "error"),
     };
   }
 
@@ -129,15 +142,16 @@ export class BSPGenerator implements Generator {
       "bsp-pipeline",
       config,
     )
+      // Core BSP passes
       .pipe(initializeState())
       .pipe(partitionBSP())
       .pipe(placeRooms())
       .pipe(buildConnectivity())
-      .pipe(assignRoomTypes()) // Assign semantic types after connectivity is built
+      .pipe(computeRoomMetadata())
       .pipe(carveRooms())
       .pipe(carveCorridors())
-      .pipe(calculateSpawns())
-      .pipe(finalizeDungeon())
+      .pipe(placeEntranceExit())
+      .pipe(finalizeDungeon("bsp"))
       .build();
 
     return pipeline;

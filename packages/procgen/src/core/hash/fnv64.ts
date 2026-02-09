@@ -58,8 +58,10 @@ export class FNV64Hasher {
    */
   updateString(str: string): this {
     for (let i = 0; i < str.length; i++) {
-      const code = str.charCodeAt(i);
-      // Simple ASCII handling - for multi-byte, would need TextEncoder
+      const code = str.codePointAt(i);
+      if (code === undefined) continue;
+
+      // Simple ASCII handling
       if (code < 128) {
         this.updateByte(code);
       } else {
@@ -72,10 +74,13 @@ export class FNV64Hasher {
           this.updateByte(0x80 | ((code >> 6) & 0x3f));
           this.updateByte(0x80 | (code & 0x3f));
         } else {
+          // Code points >= 0x10000 are represented as surrogate pairs in UTF-16
+          // Skip the next character (low surrogate) since codePointAt already handled both
           this.updateByte(0xf0 | (code >> 18));
           this.updateByte(0x80 | ((code >> 12) & 0x3f));
           this.updateByte(0x80 | ((code >> 6) & 0x3f));
           this.updateByte(0x80 | (code & 0x3f));
+          i++; // Skip the low surrogate
         }
       }
     }

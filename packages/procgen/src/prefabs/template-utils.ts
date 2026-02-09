@@ -327,7 +327,44 @@ export function getTemplateCenter(
 }
 
 /**
+ * Check if a template matches the selection criteria
+ */
+function templateMatchesCriteria(
+  t: RoomTemplate,
+  leafWidth: number,
+  leafHeight: number,
+  config: TemplateSelectionConfig,
+): boolean {
+  // Check minimum dimension requirement
+  if (Math.min(leafWidth, leafHeight) < t.minLeafSize) {
+    return false;
+  }
+
+  // Check if template dimensions fit in available space
+  if (!templateFitsInBounds(t, leafWidth, leafHeight)) {
+    return false;
+  }
+
+  // Check room type compatibility
+  if (config.roomType && t.compatibleTypes) {
+    if (!t.compatibleTypes.includes(config.roomType)) {
+      return false;
+    }
+  }
+
+  // Check required tags
+  if (config.requiredTags && config.requiredTags.length > 0) {
+    if (!t.tags || !config.requiredTags.every((tag) => t.tags?.includes(tag))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
  * Select a template that fits the given leaf dimensions
+ * Uses reservoir sampling to avoid array allocation.
  *
  * @param templates - Available templates
  * @param leafWidth - BSP leaf width
@@ -348,49 +385,24 @@ export function selectTemplateForLeaf(
     return null;
   }
 
-  // Filter templates that fit
-  // Note: leafWidth/leafHeight should be the AVAILABLE space (after room padding from caller)
-  const fitting = templates.filter((t) => {
-    // Check minimum dimension requirement
-    if (Math.min(leafWidth, leafHeight) < t.minLeafSize) {
-      return false;
-    }
+  // Reservoir sampling: single pass, no array allocation
+  // Each matching item has equal probability of being selected
+  let selected: RoomTemplate | null = null;
+  let count = 0;
 
-    // Check if template dimensions fit in available space
-    if (!templateFitsInBounds(t, leafWidth, leafHeight)) {
-      return false;
-    }
-
-    // Check room type compatibility
-    if (config.roomType && t.compatibleTypes) {
-      if (!t.compatibleTypes.includes(config.roomType)) {
-        return false;
+  for (const t of templates) {
+    if (templateMatchesCriteria(t, leafWidth, leafHeight, config)) {
+      count++;
+      // Select this item with probability 1/count
+      // Using <= to handle edge case where rng() returns exactly 1.0
+      // For count=1, this always selects (1.0 <= 1.0 is true)
+      if (rng() <= 1 / count) {
+        selected = t;
       }
     }
-
-    // Check required tags
-    if (config.requiredTags && config.requiredTags.length > 0) {
-      if (
-        !t.tags ||
-        !config.requiredTags.every((tag) => t.tags?.includes(tag))
-      ) {
-        return false;
-      }
-    }
-
-    return true;
-  });
-
-  if (fitting.length === 0) {
-    return null;
   }
 
-  // Random selection
-  const index = Math.min(
-    Math.floor(rng() * fitting.length),
-    fitting.length - 1,
-  );
-  return fitting[index] ?? null;
+  return selected;
 }
 
 /**

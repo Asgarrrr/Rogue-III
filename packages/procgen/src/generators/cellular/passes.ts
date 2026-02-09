@@ -5,21 +5,28 @@
  * Uses DungeonStateArtifact to carry full state through the pipeline.
  */
 
+import { MAX_UINT32 } from "../../core";
 import type { Point } from "../../core/geometry/types";
 import { CellType, Grid } from "../../core/grid";
-import { findLargestRegion, findRegions } from "../../core/grid/flood-fill";
+import {
+  findLargestRegion,
+  findRegions,
+  forEachRegionPoint,
+  regionGetPointAt,
+} from "../../core/grid/flood-fill";
 import type { Region } from "../../core/grid/types";
-import { calculateChecksum } from "../../core/hash";
 import type {
   Connection,
-  DungeonArtifact,
   DungeonStateArtifact,
   EmptyArtifact,
   Pass,
   Room,
   SpawnPoint,
 } from "../../pipeline/types";
-import { DEFAULT_CELLULAR_CONFIG } from "../../pipeline/types";
+import {
+  MIN_CONNECTIVITY_REGION_SIZE,
+  REGION_CONNECTION_SAMPLE_SIZE,
+} from "./constants";
 
 // =============================================================================
 // INITIALIZE RANDOM PASS
@@ -28,13 +35,19 @@ import { DEFAULT_CELLULAR_CONFIG } from "../../pipeline/types";
 /**
  * Creates initial dungeon state with randomly filled grid
  */
-export function initializeRandom(): Pass<EmptyArtifact, DungeonStateArtifact> {
+export function initializeRandom(): Pass<
+  EmptyArtifact,
+  DungeonStateArtifact,
+  "layout"
+> {
   return {
     id: "cellular.initialize-random",
     inputType: "empty",
     outputType: "dungeon-state",
+    requiredStreams: ["layout"] as const,
     run(_input, ctx) {
-      const config = { ...DEFAULT_CELLULAR_CONFIG, ...ctx.config.cellular };
+      // Config is pre-validated with all defaults resolved
+      const config = ctx.config.cellular;
       const rng = ctx.streams.layout;
       const grid = new Grid(ctx.config.width, ctx.config.height, CellType.WALL);
 
@@ -95,18 +108,22 @@ export function initializeRandom(): Pass<EmptyArtifact, DungeonStateArtifact> {
  */
 export function applyCellularRules(): Pass<
   DungeonStateArtifact,
-  DungeonStateArtifact
+  DungeonStateArtifact,
+  never
 > {
   return {
     id: "cellular.apply-rules",
     inputType: "dungeon-state",
     outputType: "dungeon-state",
+    requiredStreams: [] as const,
     run(input, ctx) {
-      const config = { ...DEFAULT_CELLULAR_CONFIG, ...ctx.config.cellular };
+      // Config is pre-validated with all defaults resolved
+      const config = ctx.config.cellular;
       let currentGrid = input.grid;
 
       // Use double buffering to avoid allocation
       let bufferGrid = new Grid(input.width, input.height, CellType.WALL);
+      let appliedIterations = 0;
 
       for (let i = 0; i < config.iterations; i++) {
         // Apply rules: wall survives if >= birthLimit neighbors, floor becomes wall if >= deathLimit neighbors
@@ -123,23 +140,36 @@ export function applyCellularRules(): Pass<
         const temp = currentGrid;
         currentGrid = bufferGrid;
         bufferGrid = temp;
+        appliedIterations = i + 1;
 
         const floorCount = currentGrid.countCells(CellType.FLOOR);
+        const stabilized = currentGrid.equals(bufferGrid);
         ctx.trace.decision(
           "cellular.apply-rules",
           `Iteration ${i + 1}/${config.iterations}`,
           ["birth", "death"],
           `${floorCount} floors`,
-          `Applied rules: birth=${config.birthLimit}, death=${config.deathLimit}`,
+          `Applied rules: birth=${config.birthLimit}, death=${config.deathLimit}${stabilized ? " (stable)" : ""}`,
         );
+
+        if (stabilized) {
+          ctx.trace.decision(
+            "cellular.apply-rules",
+            "Stable state reached",
+            [],
+            appliedIterations,
+            `No cell changes after iteration ${appliedIterations}; stopping early`,
+          );
+          break;
+        }
       }
 
       ctx.trace.decision(
         "cellular.apply-rules",
         "Cellular automata complete",
         [],
-        config.iterations,
-        `${config.iterations} iterations applied`,
+        appliedIterations,
+        `${appliedIterations}/${config.iterations} iterations applied`,
       );
 
       return {
@@ -160,16 +190,19 @@ export function applyCellularRules(): Pass<
  */
 export function keepLargestRegion(): Pass<
   DungeonStateArtifact,
-  DungeonStateArtifact
+  DungeonStateArtifact,
+  "rooms"
 > {
   return {
     id: "cellular.keep-largest-region",
     inputType: "dungeon-state",
     outputType: "dungeon-state",
+    requiredStreams: ["rooms"] as const,
     run(input, ctx) {
-      const config = { ...DEFAULT_CELLULAR_CONFIG, ...ctx.config.cellular };
+      // Config is pre-validated with all defaults resolved
+      const config = ctx.config.cellular;
       const grid = input.grid;
-      const connectAllRegions = config.connectAllRegions ?? false;
+      const connectAllRegions = config.connectAllRegions;
 
       // Find all floor regions
       const regions = findRegions(grid, CellType.FLOOR, { minSize: 1 });
@@ -203,9 +236,9 @@ export function keepLargestRegion(): Pass<
         // Remove only regions that are too small
         for (const region of regions) {
           if (region.size < config.minRegionSize) {
-            for (const point of region.points) {
-              grid.set(point.x, point.y, CellType.WALL);
-            }
+            forEachRegionPoint(region, (x, y) => {
+              grid.set(x, y, CellType.WALL);
+            });
           }
         }
 
@@ -221,7 +254,7 @@ export function keepLargestRegion(): Pass<
             centerX: Math.floor((bounds.minX + bounds.maxX) / 2),
             centerY: Math.floor((bounds.minY + bounds.maxY) / 2),
             type: "cavern",
-            seed: Math.floor(ctx.streams.rooms.next() * 0xffffffff),
+            seed: Math.floor(ctx.streams.rooms.next() * MAX_UINT32),
           });
         }
 
@@ -234,23 +267,16 @@ export function keepLargestRegion(): Pass<
         );
       } else {
         // Original behavior: keep only the largest region
-        // Create a set of points in the largest region for fast lookup
-        const largestSet = new Set(
-          largest?.points.map((p) => `${p.x},${p.y}`) ?? [],
-        );
-
-        // Fill all other floor tiles with walls
+        // Fill all non-largest regions with walls
+        // Note: regions are disjoint by definition from flood-fill, so no Set lookup needed
         let removedCount = 0;
         for (const region of regions) {
           if (region.id === largest?.id) continue;
 
-          for (const point of region.points) {
-            const key = `${point.x},${point.y}`;
-            if (!largestSet.has(key)) {
-              grid.set(point.x, point.y, CellType.WALL);
-              removedCount++;
-            }
-          }
+          forEachRegionPoint(region, (x, y) => {
+            grid.set(x, y, CellType.WALL);
+            removedCount++;
+          });
         }
 
         ctx.trace.decision(
@@ -273,7 +299,7 @@ export function keepLargestRegion(): Pass<
             centerX: Math.floor((bounds.minX + bounds.maxX) / 2),
             centerY: Math.floor((bounds.minY + bounds.maxY) / 2),
             type: "cavern",
-            seed: Math.floor(ctx.streams.rooms.next() * 0xffffffff),
+            seed: Math.floor(ctx.streams.rooms.next() * MAX_UINT32),
           });
         }
       }
@@ -296,18 +322,22 @@ export function keepLargestRegion(): Pass<
  */
 export function connectRegions(): Pass<
   DungeonStateArtifact,
-  DungeonStateArtifact
+  DungeonStateArtifact,
+  "connections"
 > {
   return {
     id: "cellular.connect-regions",
     inputType: "dungeon-state",
     outputType: "dungeon-state",
+    requiredStreams: ["connections"] as const,
     run(input, ctx) {
       const grid = input.grid;
       const rng = ctx.streams.connections;
 
       // Find all remaining floor regions
-      const regions = findRegions(grid, CellType.FLOOR, { minSize: 10 });
+      const regions = findRegions(grid, CellType.FLOOR, {
+        minSize: MIN_CONNECTIVITY_REGION_SIZE,
+      });
 
       if (regions.length <= 1) {
         ctx.trace.decision(
@@ -333,49 +363,74 @@ export function connectRegions(): Pass<
       const unconnected = new Set(regions.slice(1).map((_, i) => i + 1));
 
       while (unconnected.size > 0) {
-        let bestDist = Infinity;
         let bestFrom: Region | null = null;
         let bestTo: Region | null = null;
         let bestFromPoint: Point | null = null;
         let bestToPoint: Point | null = null;
 
-        // Find the closest pair of points between connected and unconnected regions
+        // First pass: find closest region pair by center distance
+        let bestCenterDist = Infinity;
         for (const connectedIdx of connected) {
-          const fromRegion = regions[connectedIdx];
-          if (!fromRegion) continue;
+          const connRegion = regions[connectedIdx];
+          if (!connRegion) continue;
+          const connCenter = {
+            x: Math.floor(
+              (connRegion.bounds.minX + connRegion.bounds.maxX) / 2,
+            ),
+            y: Math.floor(
+              (connRegion.bounds.minY + connRegion.bounds.maxY) / 2,
+            ),
+          };
 
           for (const unconnectedIdx of unconnected) {
-            const toRegion = regions[unconnectedIdx];
-            if (!toRegion) continue;
+            const uncRegion = regions[unconnectedIdx];
+            if (!uncRegion) continue;
+            const uncCenter = {
+              x: Math.floor(
+                (uncRegion.bounds.minX + uncRegion.bounds.maxX) / 2,
+              ),
+              y: Math.floor(
+                (uncRegion.bounds.minY + uncRegion.bounds.maxY) / 2,
+              ),
+            };
 
-            // Sample points from both regions to find closest pair
-            // Use a sample instead of all points for performance
-            const sampleSize = Math.min(
-              50,
-              fromRegion.points.length,
-              toRegion.points.length,
-            );
-
-            for (let i = 0; i < sampleSize; i++) {
-              const fromIdx = Math.floor(rng.next() * fromRegion.points.length);
-              const toIdx = Math.floor(rng.next() * toRegion.points.length);
-              const fromPoint = fromRegion.points[fromIdx];
-              const toPoint = toRegion.points[toIdx];
-
-              if (!fromPoint || !toPoint) continue;
-
-              const dist =
-                Math.abs(fromPoint.x - toPoint.x) +
-                Math.abs(fromPoint.y - toPoint.y);
-
-              if (dist < bestDist) {
-                bestDist = dist;
-                bestFrom = fromRegion;
-                bestTo = toRegion;
-                bestFromPoint = fromPoint;
-                bestToPoint = toPoint;
-              }
+            const dist =
+              Math.abs(connCenter.x - uncCenter.x) +
+              Math.abs(connCenter.y - uncCenter.y);
+            if (dist < bestCenterDist) {
+              bestCenterDist = dist;
+              bestFrom = connRegion;
+              bestTo = uncRegion;
             }
+          }
+        }
+
+        if (!bestFrom || !bestTo) break;
+
+        // Second pass: find actual closest points between the two closest regions
+        let bestDist = Infinity;
+        const sampleSize = Math.min(
+          REGION_CONNECTION_SAMPLE_SIZE,
+          bestFrom.size,
+          bestTo.size,
+        );
+
+        for (let i = 0; i < sampleSize; i++) {
+          const fromIdx = Math.floor(rng.next() * bestFrom.size);
+          const toIdx = Math.floor(rng.next() * bestTo.size);
+          const fromPoint = regionGetPointAt(bestFrom, fromIdx);
+          const toPoint = regionGetPointAt(bestTo, toIdx);
+
+          if (!fromPoint || !toPoint) continue;
+
+          const dist =
+            Math.abs(fromPoint.x - toPoint.x) +
+            Math.abs(fromPoint.y - toPoint.y);
+
+          if (dist < bestDist) {
+            bestDist = dist;
+            bestFromPoint = fromPoint;
+            bestToPoint = toPoint;
           }
         }
 
@@ -386,13 +441,16 @@ export function connectRegions(): Pass<
           connections.push({
             fromRoomId: bestFrom.id,
             toRoomId: bestTo.id,
+            pathLength: path.length,
             path,
           });
 
           edges.push([bestFrom.id, bestTo.id]);
 
-          connected.add(bestTo.id);
-          unconnected.delete(bestTo.id);
+          // Find the index of bestTo in the regions array
+          const bestToIndex = regions.indexOf(bestTo);
+          connected.add(bestToIndex);
+          unconnected.delete(bestToIndex);
 
           ctx.trace.decision(
             "cellular.connect-regions",
@@ -470,65 +528,63 @@ function carveTunnel(grid: Grid, from: Point, to: Point): Point[] {
 }
 
 // =============================================================================
-// CALCULATE SPAWNS PASS
+// PLACE ENTRANCE/EXIT PASS
 // =============================================================================
 
 /**
- * Calculates spawn points for entrance, exit, enemies, and treasure
- * For cellular caves, we pick random floor tiles in the main cavern
+ * Places entrance and exit spawn points only.
+ * Game content (enemies, treasures) should be handled by the game layer.
  */
-export function calculateSpawns(): Pass<
+export function placeEntranceExit(): Pass<
   DungeonStateArtifact,
-  DungeonStateArtifact
+  DungeonStateArtifact,
+  "details"
 > {
   return {
-    id: "cellular.calculate-spawns",
+    id: "cellular.place-entrance-exit",
     inputType: "dungeon-state",
     outputType: "dungeon-state",
+    requiredStreams: ["details"] as const,
     run(input, ctx) {
-      const grid = input.grid;
+      const { grid, width, height, rooms } = input;
       const rng = ctx.streams.details;
       const spawns: SpawnPoint[] = [];
 
-      // Find all floor tiles
+      // Collect all floor tiles
       const floorTiles: Point[] = [];
-      for (let y = 0; y < input.height; y++) {
-        for (let x = 0; x < input.width; x++) {
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
           if (grid.get(x, y) === CellType.FLOOR) {
             floorTiles.push({ x, y });
           }
         }
       }
 
-      if (floorTiles.length < 2) {
+      if (floorTiles.length === 0) {
         ctx.trace.warning(
-          "cellular.calculate-spawns",
-          `Not enough floor tiles: ${floorTiles.length}`,
+          "cellular.place-entrance-exit",
+          "No floor tiles available",
         );
-        return {
-          ...input,
-          spawns: [],
-        };
+        return { ...input, spawns: [] };
       }
 
-      // Pick entrance (random floor tile)
+      // Entrance: random floor tile
       const entranceIdx = Math.floor(rng.next() * floorTiles.length);
-      const entrance = floorTiles[entranceIdx];
-
-      if (!entrance) return { ...input, spawns: [] };
+      const entrance = floorTiles[entranceIdx]!;
+      const entranceRoomId = rooms.length > 0 ? (rooms[0]?.id ?? 0) : 0;
 
       spawns.push({
         position: { x: entrance.x, y: entrance.y },
-        roomId: 0,
+        roomId: entranceRoomId,
         type: "entrance",
         tags: ["spawn", "entrance"],
         weight: 1,
         distanceFromStart: 0,
       });
 
-      // Find exit (furthest floor tile from entrance)
+      // Exit: floor tile furthest from entrance
       let maxDist = 0;
-      let exit: Point = entrance;
+      let exit = entrance;
 
       for (const tile of floorTiles) {
         const dist =
@@ -541,7 +597,7 @@ export function calculateSpawns(): Pass<
 
       spawns.push({
         position: { x: exit.x, y: exit.y },
-        roomId: 0,
+        roomId: entranceRoomId,
         type: "exit",
         tags: ["exit"],
         weight: 1,
@@ -549,139 +605,14 @@ export function calculateSpawns(): Pass<
       });
 
       ctx.trace.decision(
-        "cellular.calculate-spawns",
-        "Exit placement",
-        [`distance: ${maxDist}`],
-        `(${exit.x}, ${exit.y})`,
-        `Exit placed ${maxDist} tiles from entrance`,
-      );
-
-      // Add enemy spawns (randomly distributed)
-      const enemyCount = Math.floor(floorTiles.length * 0.01); // 1% of floor tiles
-      const usedTiles = new Set([
-        `${entrance.x},${entrance.y}`,
-        `${exit.x},${exit.y}`,
-      ]);
-
-      for (
-        let i = 0;
-        i < enemyCount && usedTiles.size < floorTiles.length;
-        i++
-      ) {
-        let attempts = 0;
-        while (attempts < 10) {
-          const idx = Math.floor(rng.next() * floorTiles.length);
-          const tile = floorTiles[idx];
-          if (!tile) break;
-
-          const key = `${tile.x},${tile.y}`;
-          if (!usedTiles.has(key)) {
-            usedTiles.add(key);
-            const dist =
-              Math.abs(tile.x - entrance.x) + Math.abs(tile.y - entrance.y);
-            spawns.push({
-              position: { x: tile.x, y: tile.y },
-              roomId: 0,
-              type: "enemy",
-              tags: ["enemy"],
-              weight: maxDist > 0 ? dist / maxDist : 0,
-              distanceFromStart: dist,
-            });
-            break;
-          }
-          attempts++;
-        }
-      }
-
-      // Add treasure spawns (fewer than enemies)
-      const treasureCount = Math.floor(floorTiles.length * 0.002); // 0.2% of floor tiles
-
-      for (
-        let i = 0;
-        i < treasureCount && usedTiles.size < floorTiles.length;
-        i++
-      ) {
-        let attempts = 0;
-        while (attempts < 10) {
-          const idx = Math.floor(rng.next() * floorTiles.length);
-          const tile = floorTiles[idx];
-          if (!tile) break;
-
-          const key = `${tile.x},${tile.y}`;
-          if (!usedTiles.has(key)) {
-            usedTiles.add(key);
-            const dist =
-              Math.abs(tile.x - entrance.x) + Math.abs(tile.y - entrance.y);
-            spawns.push({
-              position: { x: tile.x, y: tile.y },
-              roomId: 0,
-              type: "treasure",
-              tags: ["treasure", "loot"],
-              weight: maxDist > 0 ? 1 - dist / maxDist : 1,
-              distanceFromStart: dist,
-            });
-            break;
-          }
-          attempts++;
-        }
-      }
-
-      ctx.trace.decision(
-        "cellular.calculate-spawns",
-        "Total spawn points",
+        "cellular.place-entrance-exit",
+        "Placed entrance and exit",
         [],
-        spawns.length,
-        `${spawns.length} spawn points: 1 entrance, 1 exit, ${spawns.filter((s) => s.type === "enemy").length} enemies, ${spawns.filter((s) => s.type === "treasure").length} treasures`,
+        2,
+        `Entrance at (${entrance.x}, ${entrance.y}), Exit at (${exit.x}, ${exit.y}) (distance: ${maxDist})`,
       );
 
-      return {
-        ...input,
-        spawns,
-      };
-    },
-  };
-}
-
-// =============================================================================
-// FINALIZE DUNGEON PASS
-// =============================================================================
-
-/**
- * Converts dungeon state to final dungeon artifact with checksum
- */
-export function finalizeDungeon(): Pass<DungeonStateArtifact, DungeonArtifact> {
-  return {
-    id: "cellular.finalize",
-    inputType: "dungeon-state",
-    outputType: "dungeon",
-    run(input, ctx) {
-      const checksum = calculateChecksum(
-        input.grid,
-        input.rooms,
-        input.connections,
-        input.spawns,
-      );
-
-      ctx.trace.decision(
-        "cellular.finalize",
-        "Dungeon checksum",
-        [],
-        checksum,
-        `Checksum computed from grid, rooms, connections, and spawns`,
-      );
-
-      return {
-        type: "dungeon",
-        id: "dungeon",
-        width: input.width,
-        height: input.height,
-        terrain: input.grid.getRawDataCopy(), // Use copy for immutability
-        rooms: input.rooms,
-        connections: input.connections,
-        spawns: input.spawns,
-        checksum,
-        seed: ctx.seed,
-      };
+      return { ...input, spawns };
     },
   };
 }
@@ -695,6 +626,5 @@ export const CellularPasses = {
   applyCellularRules,
   keepLargestRegion,
   connectRegions,
-  calculateSpawns,
-  finalizeDungeon,
+  placeEntranceExit,
 } as const;

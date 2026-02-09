@@ -1,5 +1,5 @@
 {
-  "name": "@rogue/procgen-v2",
+  "name": "@rogue/procgen",
   "version": "2.0.0",
   "private": true,
   "type": "module",
@@ -34,14 +34,14 @@
       "import": "./src/utils/index.ts",
       "types": "./src/utils/index.ts"
     },
-    "./fragments": {
-      "import": "./src/fragments/index.ts",
-      "types": "./src/fragments/index.ts"
-    },
     "./prefabs": {
       "import": "./src/prefabs/index.ts",
       "types": "./src/prefabs/index.ts"
     }
+  },
+  "scripts": {
+    "bench": "bun run scripts/bench.ts",
+    "bench:validation-quality": "bun run scripts/bench-validation-quality.ts"
   },
   "files": [
     "src"

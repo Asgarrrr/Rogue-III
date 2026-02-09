@@ -11,7 +11,7 @@ import { createSeed, generate, validateDungeon } from "../../src";
 import { CellType } from "../../src/core/grid/types";
 
 const SEED_COUNT = 1000;
-const ALGORITHMS = ["bsp", "cellular"] as const;
+const ALGORITHMS = ["bsp", "cellular", "hybrid"] as const;
 
 // Test configurations for different dungeon sizes
 const TEST_SIZES = [
@@ -19,6 +19,14 @@ const TEST_SIZES = [
   { width: 80, height: 60, name: "medium" },
   { width: 120, height: 90, name: "large" },
 ] as const;
+
+function getSizesForAlgorithm(algorithm: (typeof ALGORITHMS)[number]) {
+  if (algorithm === "hybrid") {
+    // Hybrid requires at least 40x40 for zone splitting.
+    return TEST_SIZES.filter((size) => size.width >= 40 && size.height >= 40);
+  }
+  return TEST_SIZES;
+}
 
 interface TestFailure {
   seed: number;
@@ -30,7 +38,7 @@ interface TestFailure {
  * Run property test over many seeds and collect failures
  */
 function runPropertyTest(
-  algorithm: "bsp" | "cellular",
+  algorithm: "bsp" | "cellular" | "hybrid",
   size: { width: number; height: number },
   seedCount: number,
   validator: (artifact: DungeonArtifact, seed: number) => string | null,
@@ -70,7 +78,7 @@ function runPropertyTest(
 
 describe("property: all dungeons pass validation", () => {
   for (const algorithm of ALGORITHMS) {
-    for (const size of TEST_SIZES) {
+    for (const size of getSizesForAlgorithm(algorithm)) {
       // Large tests can take longer, especially cellular with complex automata
       const timeout = size.name === "large" ? 60000 : 30000;
       it(
@@ -82,7 +90,7 @@ describe("property: all dungeons pass validation", () => {
             SEED_COUNT,
             (artifact) => {
               const validation = validateDungeon(artifact);
-              if (!validation.valid) {
+              if (!validation.success) {
                 return validation.violations.map((v) => v.message).join("; ");
               }
               return null;

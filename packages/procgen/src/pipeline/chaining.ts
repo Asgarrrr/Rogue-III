@@ -23,12 +23,13 @@
  * ```
  */
 
-import { type DungeonSeed, SeededRandom } from "@rogue/contracts";
+import type { DungeonSeed } from "@rogue/contracts";
 import type {
   Connection,
   DungeonArtifact,
   GenerationConfig,
   Generator,
+  PipelineFailure,
   PipelineOptions,
   PipelineResult,
   Room,
@@ -287,11 +288,12 @@ export class GeneratorChainBuilder {
   }
 
   /**
-   * Run the chain synchronously
+   * Common setup for running the chain
+   * Returns either an error result or the generator and timing info
    */
-  run(
-    options?: Omit<PipelineOptions, "signal">,
-  ): PipelineResult<DungeonArtifact> {
+  private setupChainExecution():
+    | PipelineFailure
+    | { success: true; generator: Generator; id: string; startTime: number } {
     const id = this.generatorId ?? this.config.algorithm ?? "bsp";
     const generator = this.generators[id];
 
@@ -299,12 +301,83 @@ export class GeneratorChainBuilder {
       return {
         success: false,
         error: new Error(`Unknown generator: ${id}`),
+        trace: [],
+        snapshots: [],
         durationMs: 0,
       };
     }
 
-    const startTime = performance.now();
-    const pipeline = generator.createPipeline(this.config);
+    return {
+      success: true,
+      generator,
+      id,
+      startTime: performance.now(),
+    };
+  }
+
+  /**
+   * Apply synchronous post-processors to an artifact
+   */
+  private applySyncProcessors(
+    artifact: DungeonArtifact,
+    startTime: number,
+  ): PipelineResult<DungeonArtifact> | DungeonArtifact {
+    try {
+      let current = artifact;
+      for (const processor of this.postProcessors) {
+        current = processor(current, this.config.seed);
+      }
+      return current;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+        trace: [],
+        snapshots: [],
+        durationMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Apply asynchronous post-processors to an artifact
+   */
+  private async applyAsyncProcessors(
+    artifact: DungeonArtifact,
+    startTime: number,
+  ): Promise<PipelineResult<DungeonArtifact> | DungeonArtifact> {
+    try {
+      let current = artifact;
+      for (const processor of this.asyncPostProcessors) {
+        current = await processor(current, this.config.seed);
+      }
+      return current;
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error : new Error(String(error)),
+        trace: [],
+        snapshots: [],
+        durationMs: performance.now() - startTime,
+      };
+    }
+  }
+
+  /**
+   * Run the chain synchronously
+   */
+  run(
+    options?: Omit<PipelineOptions, "signal">,
+  ): PipelineResult<DungeonArtifact> {
+    const setup = this.setupChainExecution();
+
+    // Check if setup failed
+    if ("success" in setup && !setup.success) {
+      return setup;
+    }
+
+    // TypeScript now knows setup is the success case
+    const pipeline = setup.generator.createPipeline(this.config);
     const result = pipeline.runSync(
       createEmptyArtifact(),
       this.config.seed,
@@ -316,23 +389,23 @@ export class GeneratorChainBuilder {
     }
 
     // Apply sync post-processors
-    let artifact = result.artifact;
-    try {
-      for (const processor of this.postProcessors) {
-        artifact = processor(artifact, this.config.seed);
-      }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error : new Error(String(error)),
-        durationMs: performance.now() - startTime,
-      };
+    const processedArtifact = this.applySyncProcessors(
+      result.artifact,
+      setup.startTime,
+    );
+
+    // Check if processing failed
+    if (
+      typeof processedArtifact === "object" &&
+      "success" in processedArtifact
+    ) {
+      return processedArtifact;
     }
 
     return {
       ...result,
-      artifact,
-      durationMs: performance.now() - startTime,
+      artifact: processedArtifact,
+      durationMs: performance.now() - setup.startTime,
     };
   }
 
@@ -342,19 +415,15 @@ export class GeneratorChainBuilder {
   async runAsync(
     options?: PipelineOptions,
   ): Promise<PipelineResult<DungeonArtifact>> {
-    const id = this.generatorId ?? this.config.algorithm ?? "bsp";
-    const generator = this.generators[id];
+    const setup = this.setupChainExecution();
 
-    if (!generator) {
-      return {
-        success: false,
-        error: new Error(`Unknown generator: ${id}`),
-        durationMs: 0,
-      };
+    // Check if setup failed
+    if ("success" in setup && !setup.success) {
+      return setup;
     }
 
-    const startTime = performance.now();
-    const pipeline = generator.createPipeline(this.config);
+    // TypeScript now knows setup is the success case
+    const pipeline = setup.generator.createPipeline(this.config);
     const result = await pipeline.run(
       createEmptyArtifact(),
       this.config.seed,
@@ -366,28 +435,37 @@ export class GeneratorChainBuilder {
     }
 
     // Apply sync post-processors first
-    let artifact = result.artifact;
-    try {
-      for (const processor of this.postProcessors) {
-        artifact = processor(artifact, this.config.seed);
-      }
+    let processedArtifact = this.applySyncProcessors(
+      result.artifact,
+      setup.startTime,
+    );
 
-      // Then apply async post-processors
-      for (const processor of this.asyncPostProcessors) {
-        artifact = await processor(artifact, this.config.seed);
-      }
-    } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error : new Error(String(error)),
-        durationMs: performance.now() - startTime,
-      };
+    // Check if sync processing failed
+    if (
+      typeof processedArtifact === "object" &&
+      "success" in processedArtifact
+    ) {
+      return processedArtifact;
+    }
+
+    // Apply async post-processors
+    processedArtifact = await this.applyAsyncProcessors(
+      processedArtifact,
+      setup.startTime,
+    );
+
+    // Check if async processing failed
+    if (
+      typeof processedArtifact === "object" &&
+      "success" in processedArtifact
+    ) {
+      return processedArtifact;
     }
 
     return {
       ...result,
-      artifact,
-      durationMs: performance.now() - startTime,
+      artifact: processedArtifact,
+      durationMs: performance.now() - setup.startTime,
     };
   }
 }
@@ -404,140 +482,4 @@ export function createChainFactory(
 ): (config: GenerationConfig) => GeneratorChainBuilder {
   return (config: GenerationConfig) =>
     new GeneratorChainBuilder(config, generators);
-}
-
-// =============================================================================
-// COMMON POST-PROCESSORS
-// =============================================================================
-
-/**
- * Add random treasure spawns to rooms
- */
-export function createTreasureProcessor(
-  treasureChance: number = 0.3,
-): PostProcessor {
-  return (dungeon, seed) => {
-    const newSpawns: SpawnPoint[] = [];
-    const rng = new SeededRandom(seed.details);
-
-    for (const room of dungeon.rooms) {
-      const roll = rng.next();
-
-      if (roll < treasureChance && room.type !== "entrance") {
-        newSpawns.push({
-          position: { x: room.centerX, y: room.centerY },
-          roomId: room.id,
-          type: "treasure",
-          tags: ["generated"],
-          weight: 1,
-          distanceFromStart: 0,
-        });
-      }
-    }
-
-    return {
-      ...dungeon,
-      spawns: [...dungeon.spawns, ...newSpawns],
-    };
-  };
-}
-
-/**
- * Add enemy spawns based on room distance from entrance
- */
-export function createEnemyProcessor(
-  baseEnemies: number = 1,
-  maxEnemies: number = 5,
-): PostProcessor {
-  return (dungeon, seed) => {
-    const newSpawns: SpawnPoint[] = [];
-    const entrance = dungeon.spawns.find((s) => s.type === "entrance");
-    if (!entrance) return dungeon;
-
-    // Find entrance room
-    const entranceRoom = dungeon.rooms.find((r) => r.id === entrance.roomId);
-    if (!entranceRoom) return dungeon;
-
-    const rng = new SeededRandom(seed.details);
-
-    for (const room of dungeon.rooms) {
-      if (room.id === entranceRoom.id) continue;
-
-      // Calculate rough distance
-      const dx = room.centerX - entranceRoom.centerX;
-      const dy = room.centerY - entranceRoom.centerY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      const normalizedDist = Math.min(dist / 100, 1);
-
-      // More enemies further from entrance
-      const enemyCount = Math.min(
-        maxEnemies,
-        Math.floor(baseEnemies + normalizedDist * (maxEnemies - baseEnemies)),
-      );
-
-      for (let i = 0; i < enemyCount; i++) {
-        // Generate random offset within room using SeededRandom
-        const ox = Math.floor(rng.next() * room.width) - Math.floor(room.width / 2);
-        const oy = Math.floor(rng.next() * room.height) - Math.floor(room.height / 2);
-
-        newSpawns.push({
-          position: {
-            x: room.centerX + Math.floor(ox / 2),
-            y: room.centerY + Math.floor(oy / 2),
-          },
-          roomId: room.id,
-          type: "enemy",
-          tags: ["generated"],
-          weight: 1 + normalizedDist,
-          distanceFromStart: dist,
-        });
-      }
-    }
-
-    return {
-      ...dungeon,
-      spawns: [...dungeon.spawns, ...newSpawns],
-    };
-  };
-}
-
-/**
- * Mark rooms at dead-ends as treasure rooms
- */
-export function createDeadEndTreasureProcessor(): PostProcessor {
-  return (dungeon, _seed) => {
-    // Count connections per room
-    const connectionCount = new Map<number, number>();
-    for (const room of dungeon.rooms) {
-      connectionCount.set(room.id, 0);
-    }
-    for (const conn of dungeon.connections) {
-      connectionCount.set(
-        conn.fromRoomId,
-        (connectionCount.get(conn.fromRoomId) ?? 0) + 1,
-      );
-      connectionCount.set(
-        conn.toRoomId,
-        (connectionCount.get(conn.toRoomId) ?? 0) + 1,
-      );
-    }
-
-    // Mark dead-ends as treasure rooms
-    const entrance = dungeon.spawns.find((s) => s.type === "entrance");
-    const exit = dungeon.spawns.find((s) => s.type === "exit");
-
-    const newRooms = dungeon.rooms.map((room) => {
-      const count = connectionCount.get(room.id) ?? 0;
-      const isDeadEnd = count === 1;
-      const isEntrance = room.id === entrance?.roomId;
-      const isExit = room.id === exit?.roomId;
-
-      if (isDeadEnd && !isEntrance && !isExit && room.type === "normal") {
-        return { ...room, type: "treasure" as const };
-      }
-      return room;
-    });
-
-    return { ...dungeon, rooms: newRooms };
-  };
 }

@@ -67,8 +67,8 @@ export interface TemplateVariant {
 export interface TemplateSelectionConfig {
   /** Probability of using a template vs rectangle (0-1) */
   readonly templateChance: number;
-  /** Minimum leaf size to consider templates */
-  readonly minLeafSize: number;
+  /** Minimum leaf size to consider templates (optional, templates have their own minLeafSize) */
+  readonly minLeafSize?: number;
   /** Filter by room type */
   readonly roomType?: RoomType;
   /** Filter by tags */
@@ -77,8 +77,11 @@ export interface TemplateSelectionConfig {
 
 /**
  * Default template selection config
+ *
+ * Note: minLeafSize here is not currently used - each template has its own
+ * minLeafSize that is checked during selection.
  */
 export const DEFAULT_TEMPLATE_SELECTION: TemplateSelectionConfig = {
-  templateChance: 0.3,
-  minLeafSize: 8,
+  templateChance: 0.5,
+  minLeafSize: 4,
 };

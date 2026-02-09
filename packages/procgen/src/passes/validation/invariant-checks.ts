@@ -4,8 +4,7 @@
  * Reusable validation checks for dungeon invariants.
  */
 
-import { CellType, Grid } from "../../core/grid";
-import { floodFill } from "../../core/grid/flood-fill";
+import { BitGridPool, CellType, floodFillBFS, Grid } from "../../core/grid";
 import type {
   Connection,
   DungeonArtifact,
@@ -18,8 +17,18 @@ import type {
  * Validation result for a single check
  */
 export interface CheckResult {
-  readonly passed: boolean;
+  readonly success: boolean;
   readonly violations: Violation[];
+}
+
+/**
+ * Build a mutable grid view from dungeon terrain.
+ * Shared by validation paths to avoid duplicated reconstruction logic.
+ */
+export function buildGridFromDungeon(
+  dungeon: Pick<DungeonArtifact, "width" | "height" | "terrain">,
+): Grid {
+  return Grid.fromTerrain(dungeon.width, dungeon.height, dungeon.terrain);
 }
 
 /**
@@ -31,7 +40,7 @@ export function checkEntranceExists(
   const entrance = spawns.find((s) => s.type === "entrance");
   if (!entrance) {
     return {
-      passed: false,
+      success: false,
       violations: [
         {
           type: "invariant.entrance",
@@ -41,7 +50,7 @@ export function checkEntranceExists(
       ],
     };
   }
-  return { passed: true, violations: [] };
+  return { success: true, violations: [] };
 }
 
 /**
@@ -51,7 +60,7 @@ export function checkExitExists(spawns: readonly SpawnPoint[]): CheckResult {
   const exit = spawns.find((s) => s.type === "exit");
   if (!exit) {
     return {
-      passed: false,
+      success: false,
       violations: [
         {
           type: "invariant.exit",
@@ -61,7 +70,7 @@ export function checkExitExists(spawns: readonly SpawnPoint[]): CheckResult {
       ],
     };
   }
-  return { passed: true, violations: [] };
+  return { success: true, violations: [] };
 }
 
 /**
@@ -71,7 +80,7 @@ export function checkSpawnOnFloor(spawn: SpawnPoint, grid: Grid): CheckResult {
   const cell = grid.get(spawn.position.x, spawn.position.y);
   if (cell !== CellType.FLOOR) {
     return {
-      passed: false,
+      success: false,
       violations: [
         {
           type: `invariant.${spawn.type}.floor`,
@@ -81,7 +90,7 @@ export function checkSpawnOnFloor(spawn: SpawnPoint, grid: Grid): CheckResult {
       ],
     };
   }
-  return { passed: true, violations: [] };
+  return { success: true, violations: [] };
 }
 
 /**
@@ -99,7 +108,7 @@ export function checkAllSpawnsOnFloor(
   }
 
   return {
-    passed: violations.length === 0,
+    success: violations.length === 0,
     violations,
   };
 }
@@ -116,69 +125,74 @@ export function checkRoomConnectivity(
   grid: Grid,
 ): CheckResult {
   if (rooms.length <= 1) {
-    return { passed: true, violations: [] };
+    return { success: true, violations: [] };
   }
-
-  const entranceRegion = floodFill(
-    grid,
-    entrance.position.x,
-    entrance.position.y,
-    {
-      targetValue: CellType.FLOOR,
-    },
-  );
-
-  const reachableSet = new Set(entranceRegion.map((p) => `${p.x},${p.y}`));
   const violations: Violation[] = [];
+  const entranceIsFloor =
+    grid.get(entrance.position.x, entrance.position.y) === CellType.FLOOR;
+  const reachable = entranceIsFloor
+    ? floodFillBFS(
+        grid.width,
+        grid.height,
+        entrance.position.x,
+        entrance.position.y,
+        (x, y) => grid.getUnsafe(x, y) === CellType.FLOOR,
+      )
+    : null;
 
-  for (const room of rooms) {
-    // First, check if room has any floor tiles
-    // Skip "phantom" rooms that have no floor tiles carved
-    // This can happen with certain BSP edge cases
-    let hasFloorTiles = false;
+  try {
+    for (const room of rooms) {
+      // First, check if room has any floor tiles
+      // Skip "phantom" rooms that have no floor tiles carved
+      // This can happen with certain BSP edge cases
+      let hasFloorTiles = false;
 
-    outerCheck: for (let y = room.y; y < room.y + room.height; y++) {
-      for (let x = room.x; x < room.x + room.width; x++) {
-        if (grid.get(x, y) === CellType.FLOOR) {
-          hasFloorTiles = true;
-          break outerCheck;
+      outerCheck: for (let y = room.y; y < room.y + room.height; y++) {
+        for (let x = room.x; x < room.x + room.width; x++) {
+          if (grid.get(x, y) === CellType.FLOOR) {
+            hasFloorTiles = true;
+            break outerCheck;
+          }
         }
       }
-    }
 
-    if (!hasFloorTiles) {
-      continue;
-    }
+      if (!hasFloorTiles) {
+        continue;
+      }
 
-    // Check if ANY floor tile within room bounds is reachable
-    // This handles irregular room shapes where center may be a wall
-    let isReachable = false;
+      // Check if ANY floor tile within room bounds is reachable
+      // This handles irregular room shapes where center may be a wall
+      let isReachable = false;
 
-    outerReach: for (let y = room.y; y < room.y + room.height; y++) {
-      for (let x = room.x; x < room.x + room.width; x++) {
-        if (
-          grid.get(x, y) === CellType.FLOOR &&
-          reachableSet.has(`${x},${y}`)
-        ) {
-          isReachable = true;
-          break outerReach;
+      if (reachable) {
+        outerReach: for (let y = room.y; y < room.y + room.height; y++) {
+          for (let x = room.x; x < room.x + room.width; x++) {
+            if (grid.get(x, y) === CellType.FLOOR && reachable.get(x, y)) {
+              isReachable = true;
+              break outerReach;
+            }
+          }
         }
       }
-    }
 
-    if (!isReachable) {
-      // Check if room has any connections at all
-      // Rooms with no connections are a generator bug, log as warning
-      violations.push({
-        type: "invariant.connectivity",
-        message: `Room ${room.id} at (${room.centerX}, ${room.centerY}) is not reachable from entrance`,
-        severity: "warning",
-      });
+      if (!isReachable) {
+        // Check if room has any connections at all
+        // Rooms with no connections are a generator bug, log as warning
+        violations.push({
+          type: "invariant.connectivity",
+          message: `Room ${room.id} at (${room.centerX}, ${room.centerY}) is not reachable from entrance`,
+          severity: "warning",
+        });
+      }
+    }
+  } finally {
+    if (reachable) {
+      BitGridPool.release(reachable);
     }
   }
 
   return {
-    passed: violations.length === 0,
+    success: violations.length === 0,
     violations,
   };
 }
@@ -191,7 +205,7 @@ export function checkConnectionGraph(
   connections: readonly Connection[],
 ): CheckResult {
   if (rooms.length <= 1) {
-    return { passed: true, violations: [] };
+    return { success: true, violations: [] };
   }
 
   // Build adjacency
@@ -207,13 +221,14 @@ export function checkConnectionGraph(
 
   // BFS from first room
   const firstRoom = rooms[0];
-  if (!firstRoom) return { passed: true, violations: [] }; // No rooms to check
+  if (!firstRoom) return { success: true, violations: [] }; // No rooms to check
   const visited = new Set<number>();
   const queue = [firstRoom.id];
   visited.add(firstRoom.id);
+  let queueHead = 0;
 
-  while (queue.length > 0) {
-    const current = queue.shift();
+  while (queueHead < queue.length) {
+    const current = queue[queueHead++];
     if (current === undefined) break;
     for (const neighbor of adjacency.get(current) ?? []) {
       if (!visited.has(neighbor)) {
@@ -236,7 +251,7 @@ export function checkConnectionGraph(
   }
 
   return {
-    passed: violations.length === 0,
+    success: violations.length === 0,
     violations,
   };
 }
@@ -250,7 +265,7 @@ export function checkMinimumRooms(
 ): CheckResult {
   if (rooms.length < minimum) {
     return {
-      passed: false,
+      success: false,
       violations: [
         {
           type: "invariant.rooms.minimum",
@@ -260,7 +275,7 @@ export function checkMinimumRooms(
       ],
     };
   }
-  return { passed: true, violations: [] };
+  return { success: true, violations: [] };
 }
 
 /**
@@ -290,7 +305,7 @@ export function checkNoRoomOverlap(rooms: readonly Room[]): CheckResult {
   }
 
   return {
-    passed: violations.length === 0,
+    success: violations.length === 0,
     violations,
   };
 }
@@ -321,7 +336,7 @@ export function checkRoomsInBounds(
   }
 
   return {
-    passed: violations.length === 0,
+    success: violations.length === 0,
     violations,
   };
 }
@@ -333,17 +348,7 @@ export function runAllChecks(
   dungeon: DungeonArtifact,
   options: { minimumRooms?: number } = {},
 ): CheckResult {
-  const grid = new Grid(dungeon.width, dungeon.height, CellType.WALL);
-
-  // Reconstruct grid from terrain
-  for (let y = 0; y < dungeon.height; y++) {
-    for (let x = 0; x < dungeon.width; x++) {
-      const cell = dungeon.terrain[y * dungeon.width + x];
-      if (cell !== undefined) {
-        grid.set(x, y, cell as CellType);
-      }
-    }
-  }
+  const grid = buildGridFromDungeon(dungeon);
 
   const allViolations: Violation[] = [];
 
@@ -390,7 +395,7 @@ export function runAllChecks(
   }
 
   return {
-    passed: allViolations.every((v) => v.severity !== "error"),
+    success: allViolations.every((v) => v.severity !== "error"),
     violations: allViolations,
   };
 }
