@@ -16,19 +16,18 @@
  * ```
  */
 export class UnionFind {
-  private readonly parent: number[];
-  private readonly rank: number[];
+  private readonly parent: Int32Array;
+  private readonly rank: Uint8Array;
 
   /**
    * Create a new Union-Find structure with n elements.
    * @param size - Number of elements (0 to size-1)
    */
   constructor(size: number) {
-    this.parent = new Array(size);
-    this.rank = new Array(size);
+    this.parent = new Int32Array(size);
+    this.rank = new Uint8Array(size);
     for (let i = 0; i < size; i++) {
       this.parent[i] = i;
-      this.rank[i] = 0;
     }
   }
 

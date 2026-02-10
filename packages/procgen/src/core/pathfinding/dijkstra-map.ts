@@ -315,6 +315,10 @@ class TypedMinHeap {
     this.size = 0;
   }
 
+  getCapacity(): number {
+    return this.capacity;
+  }
+
   private grow(): void {
     this.capacity *= 2;
     const newX = new Uint16Array(this.capacity);
@@ -362,6 +366,29 @@ class TypedMinHeap {
   }
 }
 
+const TYPED_HEAP_POOL_MAX = 4;
+const TYPED_HEAP_MAX_RETAINED_CAPACITY = 1 << 16;
+const typedHeapPool: TypedMinHeap[] = [];
+
+function acquireTypedMinHeap(): TypedMinHeap {
+  const heap = typedHeapPool.pop();
+  if (heap) {
+    heap.clear();
+    return heap;
+  }
+  return new TypedMinHeap();
+}
+
+function releaseTypedMinHeap(heap: TypedMinHeap): void {
+  heap.clear();
+  if (heap.getCapacity() > TYPED_HEAP_MAX_RETAINED_CAPACITY) {
+    return;
+  }
+  if (typedHeapPool.length < TYPED_HEAP_POOL_MAX) {
+    typedHeapPool.push(heap);
+  }
+}
+
 /**
  * Options for Dijkstra map computation
  */
@@ -402,58 +429,62 @@ export function computeDijkstraMap(
 
   const map = new DijkstraMap(grid.width, grid.height);
 
-  // Priority queue using typed array based heap for O(log n) operations
-  const queue = new TypedMinHeap();
+  // Priority queue using typed array based heap for O(log n) operations.
+  const queue = acquireTypedMinHeap();
 
-  // Initialize goals with distance 0
-  for (const goal of goals) {
-    if (grid.isInBounds(goal.x, goal.y)) {
-      map.set(goal.x, goal.y, 0);
-      queue.push(goal.x, goal.y, 0);
-    }
-  }
-
-  // Process queue
-  while (queue.length > 0) {
-    const current = queue.pop();
-    if (!current) break;
-
-    // Skip if we've found a better path
-    if (current.dist > map.get(current.x, current.y)) {
-      continue;
-    }
-
-    // Skip if beyond max distance
-    if (current.dist >= opts.maxDistance) {
-      continue;
-    }
-
-    // Explore neighbors
-    for (const [dx, dy] of directions) {
-      if (dx === undefined || dy === undefined) continue;
-      const nx = current.x + dx;
-      const ny = current.y + dy;
-
-      // Check bounds
-      if (!grid.isInBounds(nx, ny)) continue;
-
-      // Check walkability
-      if (!walkableSet.has(grid.get(nx, ny))) continue;
-
-      // Calculate movement cost
-      const isDiagonal = dx !== 0 && dy !== 0;
-      const moveCost = isDiagonal ? opts.diagonalCost : 1;
-      const newDist = current.dist + moveCost;
-
-      // Update if better path found
-      if (newDist < map.get(nx, ny)) {
-        map.set(nx, ny, newDist);
-        queue.push(nx, ny, newDist);
+  try {
+    // Initialize goals with distance 0
+    for (const goal of goals) {
+      if (grid.isInBounds(goal.x, goal.y)) {
+        map.set(goal.x, goal.y, 0);
+        queue.push(goal.x, goal.y, 0);
       }
     }
-  }
 
-  return map;
+    // Process queue
+    while (queue.length > 0) {
+      const current = queue.pop();
+      if (!current) break;
+
+      // Skip if we've found a better path
+      if (current.dist > map.get(current.x, current.y)) {
+        continue;
+      }
+
+      // Skip if beyond max distance
+      if (current.dist >= opts.maxDistance) {
+        continue;
+      }
+
+      // Explore neighbors
+      for (const [dx, dy] of directions) {
+        if (dx === undefined || dy === undefined) continue;
+        const nx = current.x + dx;
+        const ny = current.y + dy;
+
+        // Check bounds
+        if (!grid.isInBounds(nx, ny)) continue;
+
+        // Check walkability
+        if (!walkableSet.has(grid.get(nx, ny))) continue;
+
+        // Calculate movement cost
+        const isDiagonal = dx !== 0 && dy !== 0;
+        const moveCost = isDiagonal ? opts.diagonalCost : 1;
+        const newDist = current.dist + moveCost;
+
+        // Update if better path found
+        if (newDist < map.get(nx, ny)) {
+          map.set(nx, ny, newDist);
+          queue.push(nx, ny, newDist);
+        }
+      }
+    }
+
+    return map;
+  } finally {
+    releaseTypedMinHeap(queue);
+  }
 }
 
 /**
