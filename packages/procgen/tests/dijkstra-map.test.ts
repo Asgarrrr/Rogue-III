@@ -169,6 +169,46 @@ describe("computeDijkstraMap", () => {
     expect(map.get(1, 1)).toBe(2); // Must go cardinal
     expect(map.get(5, 5)).toBe(10); // Manhattan distance
   });
+
+  it("keeps correct distances across repeated calls with pooled queue", () => {
+    const large = createOpenGrid(120, 120);
+    const expectedLargeDistance = 238;
+
+    for (let i = 0; i < 5; i++) {
+      const map = computeDijkstraMap(large, [{ x: 0, y: 0 }], {
+        allowDiagonal: false,
+      });
+      expect(map.get(119, 119)).toBe(expectedLargeDistance);
+    }
+
+    const small = createOpenGrid(10, 10);
+    const smallMap = computeDijkstraMap(small, [{ x: 0, y: 0 }], {
+      allowDiagonal: false,
+    });
+    expect(smallMap.get(9, 9)).toBe(18);
+  });
+
+  it("does not leak queue state between calls with different goal sets", () => {
+    const grid = createOpenGrid(40, 40);
+
+    const mapA = computeDijkstraMap(grid, [{ x: 0, y: 0 }], {
+      allowDiagonal: false,
+    });
+    const mapB = computeDijkstraMap(
+      grid,
+      [
+        { x: 39, y: 39 },
+        { x: 39, y: 0 },
+      ],
+      { allowDiagonal: false },
+    );
+
+    expect(mapA.get(0, 0)).toBe(0);
+    expect(mapA.get(39, 39)).toBe(78);
+    expect(mapB.get(39, 39)).toBe(0);
+    expect(mapB.get(39, 0)).toBe(0);
+    expect(mapB.get(0, 0)).toBe(39);
+  });
 });
 
 describe("computeFleeMap", () => {

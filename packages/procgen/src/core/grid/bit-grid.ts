@@ -65,8 +65,11 @@ class BitGridPoolImpl implements BitGridPoolLike {
     for (let i = this.pool.length - 1; i >= 0; i--) {
       const grid = this.pool[i]!;
       if (grid.width === width && grid.height === height) {
-        // Remove from pool and clear
-        this.pool.splice(i, 1);
+        // Remove in O(1) via swap-with-last then pop.
+        const last = this.pool.pop();
+        if (last !== undefined && i < this.pool.length) {
+          this.pool[i] = last;
+        }
         grid.clear();
         this.hits++;
         return grid;
@@ -156,6 +159,16 @@ export function createBitGridPool(
 }
 
 export const BitGridPool: BitGridPoolLike = createBitGridPool();
+
+/**
+ * Fast popcount for a 32-bit word using SWAR bit tricks.
+ */
+function popcount32(value: number): number {
+  let n = value >>> 0;
+  n = n - ((n >>> 1) & 0x55555555);
+  n = (n & 0x33333333) + ((n >>> 2) & 0x33333333);
+  return ((((n + (n >>> 4)) & 0x0f0f0f0f) * 0x01010101) >>> 24) >>> 0;
+}
 
 /**
  * Memory-efficient boolean grid using bit packing.
@@ -303,12 +316,7 @@ export class BitGrid {
     // Count bits in full Uint32 elements
     const fullElements = Math.floor(totalCells / 32);
     for (let i = 0; i < fullElements; i++) {
-      let n = this.data[i] ?? 0;
-      // Brian Kernighan's algorithm
-      while (n) {
-        n &= n - 1;
-        count++;
-      }
+      count += popcount32(this.data[i] ?? 0);
     }
 
     // Count valid bits in the last partial element
@@ -316,12 +324,8 @@ export class BitGrid {
     if (remainingBits > 0) {
       const lastElement = this.data[fullElements] ?? 0;
       // Mask to only count valid bits
-      const mask = (1 << remainingBits) - 1;
-      let n = lastElement & mask;
-      while (n) {
-        n &= n - 1;
-        count++;
-      }
+      const mask = 0xffffffff >>> (32 - remainingBits);
+      count += popcount32(lastElement & mask);
     }
 
     return count;
