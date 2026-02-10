@@ -65,8 +65,11 @@ class BitGridPoolImpl implements BitGridPoolLike {
     for (let i = this.pool.length - 1; i >= 0; i--) {
       const grid = this.pool[i]!;
       if (grid.width === width && grid.height === height) {
-        // Remove from pool and clear
-        this.pool.splice(i, 1);
+        // Remove in O(1) via swap-with-last then pop.
+        const last = this.pool.pop();
+        if (last !== undefined && i < this.pool.length) {
+          this.pool[i] = last;
+        }
         grid.clear();
         this.hits++;
         return grid;

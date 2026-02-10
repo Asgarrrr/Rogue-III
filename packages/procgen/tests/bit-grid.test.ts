@@ -248,5 +248,23 @@ describe("BitGrid", () => {
       expect(pool.stats.growths).toBe(0);
       expect(pool.stats.discards).toBe(0);
     });
+
+    it("keeps other pooled entries valid when acquiring a middle match", () => {
+      const pool = createBitGridPool(8, 8);
+      pool.release(new BitGrid(1, 1));
+      pool.release(new BitGrid(2, 2));
+      pool.release(new BitGrid(3, 3));
+
+      // Scan order is from end; 2x2 is the middle candidate in this setup.
+      const middle = pool.acquire(2, 2);
+      expect(middle.width).toBe(2);
+      expect(middle.height).toBe(2);
+
+      const first = pool.acquire(1, 1);
+      const last = pool.acquire(3, 3);
+      expect(first.width).toBe(1);
+      expect(last.width).toBe(3);
+      expect(pool.size).toBe(0);
+    });
   });
 });

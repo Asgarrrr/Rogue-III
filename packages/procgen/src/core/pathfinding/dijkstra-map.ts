@@ -360,9 +360,15 @@ class TypedMinHeap {
   }
 
   private swap(i: number, j: number): void {
-    [this.x[i], this.x[j]] = [this.x[j]!, this.x[i]!];
-    [this.y[i], this.y[j]] = [this.y[j]!, this.y[i]!];
-    [this.dist[i], this.dist[j]] = [this.dist[j]!, this.dist[i]!];
+    const x = this.x[i]!;
+    const y = this.y[i]!;
+    const dist = this.dist[i]!;
+    this.x[i] = this.x[j]!;
+    this.y[i] = this.y[j]!;
+    this.dist[i] = this.dist[j]!;
+    this.x[j] = x;
+    this.y[j] = y;
+    this.dist[j] = dist;
   }
 }
 
@@ -372,10 +378,7 @@ const typedHeapPool: TypedMinHeap[] = [];
 
 function acquireTypedMinHeap(): TypedMinHeap {
   const heap = typedHeapPool.pop();
-  if (heap) {
-    heap.clear();
-    return heap;
-  }
+  if (heap) return heap;
   return new TypedMinHeap();
 }
 

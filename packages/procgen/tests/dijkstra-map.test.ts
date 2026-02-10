@@ -187,6 +187,28 @@ describe("computeDijkstraMap", () => {
     });
     expect(smallMap.get(9, 9)).toBe(18);
   });
+
+  it("does not leak queue state between calls with different goal sets", () => {
+    const grid = createOpenGrid(40, 40);
+
+    const mapA = computeDijkstraMap(grid, [{ x: 0, y: 0 }], {
+      allowDiagonal: false,
+    });
+    const mapB = computeDijkstraMap(
+      grid,
+      [
+        { x: 39, y: 39 },
+        { x: 39, y: 0 },
+      ],
+      { allowDiagonal: false },
+    );
+
+    expect(mapA.get(0, 0)).toBe(0);
+    expect(mapA.get(39, 39)).toBe(78);
+    expect(mapB.get(39, 39)).toBe(0);
+    expect(mapB.get(39, 0)).toBe(0);
+    expect(mapB.get(0, 0)).toBe(39);
+  });
 });
 
 describe("computeFleeMap", () => {

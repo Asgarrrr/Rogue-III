@@ -38,13 +38,23 @@ export class UnionFind {
    * @returns Root element of the set
    */
   find(x: number): number {
-    const parent = this.parent[x];
-    if (parent === undefined) return x;
-    if (parent !== x) {
-      this.parent[x] = this.find(parent);
-      return this.parent[x]!;
+    if (!this.isInBounds(x)) return x;
+
+    // Find root.
+    let root = x;
+    while (this.parent[root] !== root) {
+      root = this.parent[root]!;
     }
-    return parent;
+
+    // Path compression.
+    let node = x;
+    while (node !== root) {
+      const next = this.parent[node]!;
+      this.parent[node] = root;
+      node = next;
+    }
+
+    return root;
   }
 
   /**
@@ -55,14 +65,15 @@ export class UnionFind {
    * @returns True if a merge was performed, false if already in same set
    */
   union(x: number, y: number): boolean {
+    if (!this.isInBounds(x) || !this.isInBounds(y)) return false;
+
     const rootX = this.find(x);
     const rootY = this.find(y);
 
     if (rootX === rootY) return false;
 
-    const rankX = this.rank[rootX];
-    const rankY = this.rank[rootY];
-    if (rankX === undefined || rankY === undefined) return false;
+    const rankX = this.rank[rootX]!;
+    const rankY = this.rank[rootY]!;
 
     // Union by rank
     if (rankX < rankY) {
@@ -84,5 +95,9 @@ export class UnionFind {
    */
   connected(x: number, y: number): boolean {
     return this.find(x) === this.find(y);
+  }
+
+  private isInBounds(index: number): boolean {
+    return index >= 0 && index < this.parent.length;
   }
 }
