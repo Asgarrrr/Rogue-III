@@ -274,9 +274,6 @@ describe("SVG palette", () => {
     expect(DARK_PALETTE.exit).toBeDefined();
     expect(DARK_PALETTE.roomOutline).toBeDefined();
     expect(DARK_PALETTE.connectionLine).toBeDefined();
-    expect(DARK_PALETTE.doorOpen).toBeDefined();
-    expect(DARK_PALETTE.doorLocked).toBeDefined();
-    expect(DARK_PALETTE.doorSecret).toBeDefined();
     expect(DARK_PALETTE.grid).toBeDefined();
     expect(DARK_PALETTE.text).toBeDefined();
     expect(DARK_PALETTE.background).toBeDefined();
@@ -289,9 +286,6 @@ describe("SVG palette", () => {
     expect(LIGHT_PALETTE.exit).toBeDefined();
     expect(LIGHT_PALETTE.roomOutline).toBeDefined();
     expect(LIGHT_PALETTE.connectionLine).toBeDefined();
-    expect(LIGHT_PALETTE.doorOpen).toBeDefined();
-    expect(LIGHT_PALETTE.doorLocked).toBeDefined();
-    expect(LIGHT_PALETTE.doorSecret).toBeDefined();
     expect(LIGHT_PALETTE.grid).toBeDefined();
     expect(LIGHT_PALETTE.text).toBeDefined();
     expect(LIGHT_PALETTE.background).toBeDefined();

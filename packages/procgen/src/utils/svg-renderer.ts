@@ -17,7 +17,7 @@
  */
 
 import { CellType } from "../core/grid";
-import type { Connection, DungeonArtifact, Room } from "../pipeline/types";
+import type { DungeonArtifact, Room } from "../pipeline/types";
 
 // =============================================================================
 // CONFIGURATION
@@ -34,9 +34,6 @@ export interface SVGColorPalette {
   readonly exit: string;
   readonly roomOutline: string;
   readonly connectionLine: string;
-  readonly doorOpen: string;
-  readonly doorLocked: string;
-  readonly doorSecret: string;
   readonly grid: string;
   readonly text: string;
   readonly background: string;
@@ -53,9 +50,6 @@ export const DARK_PALETTE: SVGColorPalette = {
   exit: "#f87171",
   roomOutline: "#e94560",
   connectionLine: "#fbbf24",
-  doorOpen: "#60a5fa",
-  doorLocked: "#f59e0b",
-  doorSecret: "#8b5cf6",
   grid: "#374151",
   text: "#e5e7eb",
   background: "#0f0f1a",
@@ -72,9 +66,6 @@ export const NEUTRAL_DARK_PALETTE: SVGColorPalette = {
   exit: "#ef4444",       // red-500
   roomOutline: "#525252", // neutral-600
   connectionLine: "#525252", // neutral-600
-  doorOpen: "#a3a3a3",   // neutral-400
-  doorLocked: "#f59e0b", // amber-500
-  doorSecret: "#8b5cf6", // violet-500
   grid: "#262626",       // neutral-800
   text: "#e5e5e5",       // neutral-200
   background: "#0a0a0a", // neutral-950
@@ -91,9 +82,6 @@ export const NEUTRAL_LIGHT_PALETTE: SVGColorPalette = {
   exit: "#ef4444",       // red-500
   roomOutline: "#a3a3a3", // neutral-400
   connectionLine: "#a3a3a3", // neutral-400
-  doorOpen: "#525252",   // neutral-600
-  doorLocked: "#f59e0b", // amber-500
-  doorSecret: "#8b5cf6", // violet-500
   grid: "#d4d4d4",       // neutral-300
   text: "#171717",       // neutral-900
   background: "#fafafa", // neutral-50
@@ -110,9 +98,6 @@ export const LIGHT_PALETTE: SVGColorPalette = {
   exit: "#ef4444",
   roomOutline: "#3b82f6",
   connectionLine: "#f59e0b",
-  doorOpen: "#3b82f6",
-  doorLocked: "#dc2626",
-  doorSecret: "#7c3aed",
   grid: "#d1d5db",
   text: "#1f2937",
   background: "#ffffff",
@@ -134,8 +119,6 @@ export interface SVGOptions {
   readonly showSpawns?: boolean;
   /** Show grid lines */
   readonly showGrid?: boolean;
-  /** Show door markers on connections */
-  readonly showDoors?: boolean;
   /** Color palette to use */
   readonly palette?: SVGColorPalette;
   /** Include CSS styles in SVG (for standalone use) */
@@ -247,7 +230,6 @@ export function renderSVG(
     showRoomOutlines = true,
     showSpawns = true,
     showGrid = false,
-    showDoors = true,
     palette = DARK_PALETTE,
     embedStyles = true,
     title,
@@ -350,19 +332,6 @@ export function renderSVG(
           "stroke-dasharray": "4,2",
         }),
       );
-
-      // Door marker
-      if (showDoors && conn.doorPosition) {
-        const doorColor = getDoorColor(conn, palette);
-        const dx = margin + conn.doorPosition.x * cellSize + cellSize / 2;
-        const dy = margin + conn.doorPosition.y * cellSize + cellSize / 2;
-        elements.push(
-          rect(dx - 3, dy - 3, 6, 6, doorColor, {
-            stroke: palette.text,
-            "stroke-width": 1,
-          }),
-        );
-      }
     }
     elements.push(`</g>`);
   }
@@ -438,23 +407,6 @@ export function renderSVG(
 
   return svg;
 }
-
-/**
- * Get the color for a door based on connection type
- */
-function getDoorColor(conn: Connection, palette: SVGColorPalette): string {
-  switch (conn.type) {
-    case "door":
-      return palette.doorOpen;
-    case "locked_door":
-      return palette.doorLocked;
-    case "secret":
-      return palette.doorSecret;
-    default:
-      return palette.doorOpen;
-  }
-}
-
 // =============================================================================
 // BATCH RENDERING
 // =============================================================================
@@ -541,9 +493,6 @@ export function renderSVGLegend(
     { label: "Exit", color: palette.exit },
     { label: "Room Outline", color: palette.roomOutline },
     { label: "Connection", color: palette.connectionLine },
-    { label: "Door (open)", color: palette.doorOpen },
-    { label: "Door (locked)", color: palette.doorLocked },
-    { label: "Secret", color: palette.doorSecret },
   ];
 
   const itemHeight = 24;

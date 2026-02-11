@@ -46,7 +46,7 @@ export interface GridArtifact extends Artifact<"grid"> {
 
 /**
  * Room type - structural categories only.
- * Game-specific types (boss, treasure, library, etc.) should be handled by game layer.
+ * Domain-specific semantic room roles should be handled by the game layer.
  */
 export type RoomType = "normal" | "cavern";
 
@@ -87,38 +87,6 @@ export interface RoomsArtifact extends Artifact<"rooms"> {
 }
 
 /**
- * Connection type - describes the nature of the connection between rooms.
- *
- * - "open": No obstruction, free passage
- * - "door": Standard door (can be opened/closed)
- * - "locked_door": Requires key to open
- * - "secret": Hidden passage, not visible by default
- * - "bridge": Passage over void/water/hazard
- * - "one_way": Can only be traversed in one direction (fromRoom -> toRoom)
- */
-export type ConnectionType =
-  | "open"
-  | "door"
-  | "locked_door"
-  | "secret"
-  | "bridge"
-  | "one_way";
-
-/**
- * Connection metadata - extensible data for game-specific properties.
- */
-export interface ConnectionMeta {
-  /** Required key ID for locked doors */
-  readonly keyId?: string;
-  /** Whether this connection is visible on map (false for secrets until discovered) */
-  readonly visible?: boolean;
-  /** Traversability cost modifier (1.0 = normal, higher = harder) */
-  readonly traversalCost?: number;
-  /** Tags for game logic (e.g., ["requires_lever", "trapped"]) */
-  readonly tags?: readonly string[];
-}
-
-/**
  * Connection between two rooms
  */
 export interface Connection {
@@ -126,12 +94,6 @@ export interface Connection {
   readonly toRoomId: number;
   readonly pathLength: number;
   readonly path?: readonly Point[];
-  /** Type of connection - defaults to "open" if not specified */
-  readonly type?: ConnectionType;
-  /** Position of the door/gate if applicable */
-  readonly doorPosition?: Point;
-  /** Optional metadata for game-specific properties */
-  readonly metadata?: ConnectionMeta;
 }
 
 /**

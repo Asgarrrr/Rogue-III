@@ -90,7 +90,7 @@ export class DijkstraMap {
 
   /**
    * Get all points within a distance range.
-   * Useful for spawning enemies at specific difficulty distances.
+   * Useful for selecting points at specific distance bands.
    */
   getPointsInRange(minDist: number, maxDist: number): Point[] {
     const points: Point[] = [];
