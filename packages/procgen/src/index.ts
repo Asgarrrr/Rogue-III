@@ -85,9 +85,6 @@ export type {
   BSPConfig,
   CellularConfig,
   Connection,
-  // Connection types
-  ConnectionMeta,
-  ConnectionType,
   // Artifacts
   DungeonArtifact,
   // Config
