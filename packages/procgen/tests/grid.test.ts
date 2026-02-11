@@ -103,6 +103,80 @@ describe("Grid", () => {
     });
   });
 
+  describe("copyFrom", () => {
+    it("copies a rectangular region from source to destination", () => {
+      const src = new Grid(8, 8, CellType.WALL);
+      src.fillRect(2, 2, 3, 3, CellType.FLOOR);
+
+      const dst = new Grid(8, 8, CellType.WALL);
+      dst.copyFrom(src, 2, 2, 4, 1, 3, 3);
+
+      expect(dst.get(4, 1)).toBe(CellType.FLOOR);
+      expect(dst.get(6, 3)).toBe(CellType.FLOOR);
+      expect(dst.get(3, 1)).toBe(CellType.WALL);
+      expect(dst.get(7, 3)).toBe(CellType.WALL);
+    });
+
+    it("clips copy region to source and destination bounds", () => {
+      const src = new Grid(5, 5, CellType.WALL);
+      src.fillRect(0, 0, 5, 5, CellType.FLOOR);
+
+      const dst = new Grid(5, 5, CellType.WALL);
+      dst.copyFrom(src, 0, 0, -2, -1, 5, 5);
+
+      expect(dst.get(0, 0)).toBe(CellType.FLOOR);
+      expect(dst.get(2, 3)).toBe(CellType.FLOOR);
+      expect(dst.get(4, 4)).toBe(CellType.WALL);
+    });
+
+    it("is deterministic across repeated copies", () => {
+      const src = new Grid(10, 10, CellType.WALL);
+      src.fillRect(3, 4, 4, 3, CellType.FLOOR);
+
+      const dstA = new Grid(10, 10, CellType.WALL);
+      const dstB = new Grid(10, 10, CellType.WALL);
+
+      dstA.copyFrom(src, 0, 0, 0, 0, 10, 10);
+      dstB.copyFrom(src, 0, 0, 0, 0, 10, 10);
+
+      expect(Array.from(dstA.getRawDataCopy())).toEqual(
+        Array.from(dstB.getRawDataCopy()),
+      );
+    });
+
+    it("handles overlapping self-copy without row smearing", () => {
+      const grid = new Grid(6, 6, CellType.WALL);
+      for (let x = 1; x <= 3; x++) {
+        grid.set(x, 1, CellType.FLOOR);
+        grid.set(x, 2, CellType.DOOR);
+        grid.set(x, 3, CellType.WATER);
+      }
+
+      const srcSnapshot = grid.clone();
+      const expected = grid.clone();
+      expected.copyFrom(srcSnapshot, 1, 1, 1, 2, 3, 3);
+
+      grid.copyFrom(grid, 1, 1, 1, 2, 3, 3);
+
+      expect(Array.from(grid.getRawDataCopy())).toEqual(
+        Array.from(expected.getRawDataCopy()),
+      );
+      expect(grid.get(1, 2)).toBe(CellType.FLOOR);
+      expect(grid.get(1, 3)).toBe(CellType.DOOR);
+      expect(grid.get(1, 4)).toBe(CellType.WATER);
+    });
+
+    it("no-ops when there is no overlap", () => {
+      const src = new Grid(4, 4, CellType.FLOOR);
+      const dst = new Grid(4, 4, CellType.WALL);
+
+      dst.copyFrom(src, 0, 0, 20, 20, 4, 4);
+
+      expect(dst.countCells(CellType.WALL)).toBe(16);
+      expect(dst.countCells(CellType.FLOOR)).toBe(0);
+    });
+  });
+
   describe("neighbor counting", () => {
     it("countNeighbors4 counts cardinal neighbors", () => {
       const grid = new Grid(5, 5, CellType.WALL);

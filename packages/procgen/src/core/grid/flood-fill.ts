@@ -7,6 +7,13 @@ import { type BitGrid, BitGridPool } from "./bit-grid";
 import type { Grid } from "./grid";
 import type { CellType, FloodFillConfig, Region } from "./types";
 
+const BFS_DIRECTIONS_4: ReadonlyArray<readonly [number, number]> = [
+  [0, 1],
+  [1, 0],
+  [0, -1],
+  [-1, 0],
+] as const;
+
 // ============================================================================
 // Packed Coordinate Utilities
 // ============================================================================
@@ -464,12 +471,7 @@ export function floodFillBFS(
     const y = Math.floor(coord / width);
     onVisit?.(x, y);
 
-    for (const [dx, dy] of [
-      [0, 1],
-      [1, 0],
-      [0, -1],
-      [-1, 0],
-    ] as const) {
+    for (const [dx, dy] of BFS_DIRECTIONS_4) {
       const nx = x + dx;
       const ny = y + dy;
       if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
