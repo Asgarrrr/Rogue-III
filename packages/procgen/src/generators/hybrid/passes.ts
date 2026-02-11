@@ -569,25 +569,21 @@ export function mergeZones(): Pass<
       const zoneRooms = input.zoneRooms ?? new Map();
 
       // Copy zone grids to main grid
-      // Note: Zone bounds are always within main grid bounds (zones are created by splitting the grid)
-      // so we can skip bounds checking for better performance
       const mainGrid = input.grid;
       for (const zone of zones) {
         const zoneGrid = zoneGrids.get(zone.id);
         if (!zoneGrid) continue;
 
-        const zoneX = zone.bounds.x;
-        const zoneY = zone.bounds.y;
-        const zoneWidth = zone.bounds.width;
-        const zoneHeight = zone.bounds.height;
-
-        // Copy cells from zone grid to main grid (no bounds check needed)
-        for (let y = 0; y < zoneHeight; y++) {
-          const globalY = zoneY + y;
-          for (let x = 0; x < zoneWidth; x++) {
-            mainGrid.set(zoneX + x, globalY, zoneGrid.get(x, y));
-          }
-        }
+        // Bulk copy reduces per-cell call overhead in hot hybrid merges.
+        mainGrid.copyFrom(
+          zoneGrid,
+          0,
+          0,
+          zone.bounds.x,
+          zone.bounds.y,
+          zone.bounds.width,
+          zone.bounds.height,
+        );
       }
 
       // Collect all rooms

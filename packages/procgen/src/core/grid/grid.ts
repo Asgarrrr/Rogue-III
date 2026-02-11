@@ -347,6 +347,75 @@ export class Grid implements MutableGrid {
   }
 
   /**
+   * Copy a rectangular region from another grid into this grid.
+   * Uses row-wise typed-array copies for high throughput.
+   * Supports overlapping source/destination regions (including self-copy).
+   */
+  copyFrom(
+    src: Grid,
+    srcX: number,
+    srcY: number,
+    dstX: number,
+    dstY: number,
+    width: number,
+    height: number,
+  ): void {
+    if (width <= 0 || height <= 0) return;
+
+    let startCol = 0;
+    let startRow = 0;
+    let endCol = width;
+    let endRow = height;
+
+    // Align source and destination when origins are negative.
+    if (srcX < 0) startCol = Math.max(startCol, -srcX);
+    if (srcY < 0) startRow = Math.max(startRow, -srcY);
+    if (dstX < 0) startCol = Math.max(startCol, -dstX);
+    if (dstY < 0) startRow = Math.max(startRow, -dstY);
+
+    // Clip right/bottom edges against both source and destination bounds.
+    endCol = Math.min(endCol, src.width - srcX, this.width - dstX);
+    endRow = Math.min(endRow, src.height - srcY, this.height - dstY);
+
+    if (endCol <= startCol || endRow <= startRow) return;
+
+    // Intentional internal fast path: src is a concrete Grid, not an external interface.
+    const srcData = src._unsafeGetInternalData();
+    const dstData = this.data;
+    const srcWidth = src.width;
+    const dstWidth = this.width;
+    const rowLength = endCol - startCol;
+
+    const srcStartRow = srcY + startRow;
+    const srcEndRow = srcY + endRow;
+    const dstStartRow = dstY + startRow;
+    const dstEndRow = dstY + endRow;
+    const hasVerticalOverlap =
+      srcStartRow < dstEndRow && dstStartRow < srcEndRow;
+    const copyBottomUp =
+      src === this && hasVerticalOverlap && dstStartRow > srcStartRow;
+
+    if (copyBottomUp) {
+      // Memmove-like behavior for vertical overlap when writing downward.
+      for (let row = endRow - 1; row >= startRow; row--) {
+        const srcOffset = (srcY + row) * srcWidth + (srcX + startCol);
+        const dstOffset = (dstY + row) * dstWidth + (dstX + startCol);
+        dstData.set(
+          srcData.subarray(srcOffset, srcOffset + rowLength),
+          dstOffset,
+        );
+      }
+      return;
+    }
+
+    for (let row = startRow; row < endRow; row++) {
+      const srcOffset = (srcY + row) * srcWidth + (srcX + startCol);
+      const dstOffset = (dstY + row) * dstWidth + (dstX + startCol);
+      dstData.set(srcData.subarray(srcOffset, srcOffset + rowLength), dstOffset);
+    }
+  }
+
+  /**
    * Count cells of specific type in rectangular area
    */
   countInRect(
